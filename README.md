@@ -26,7 +26,7 @@ To set up and run simulations, please refer to the example folder.
 License
 -------
 
-Released under GPL v3. License (see `LICENSE.txt <https://github.com/jespfra/CADET-Julia/blob/main/LICENSE.txt>`_)::
+Released under GPL v3. License (see [here](https://github.com/jespfra/CADET-Julia/blob/main/LICENSE))
 
 Acknowledgments
 ---------------
