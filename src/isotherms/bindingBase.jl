@@ -13,14 +13,25 @@ mutable struct Linear <: bindingBase
 	ka::Vector{Float64}
 	kd::Vector{Float64} 
 	is_kinetic::Bool 
-	kkin::Vector{Float64} 
+	kkin::Union{Float64, Vector{Float64}}
 	nBound::Vector{Bool} 
 	idx::UnitRange{Int64}
 	
 	# Define a constructor for Linear that accepts keyword arguments
-	function Linear(; ka::Vector{Float64}, kd::Vector{Float64}, is_kinetic::Bool, kkin::Vector{Float64}=[1.0], bindStride, nBound::Vector{Bool})
-		kkin =  Float64.(nBound)
-		if is_kinetic == false #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
+	function Linear(; ka::Vector{Float64}, kd::Vector{Float64}, is_kinetic::Bool, kkin::Vector{Float64}=1.0, bindStride, nBound::Vector{Bool})
+		
+		# For kkin, if default value is given, set the kkin value equation to nBound
+		if typeof(kkin) == Float64 
+			kkin = Float64.(nBound)*kkin
+		end
+		
+		# If length of kkin does not match nBound (nComp), throw error 
+		if length(kkin) != length(nBound)
+			throw("Length of kkin should match nBound (nComp) or be specified as a Float64")
+		end
+		
+		# If is kinetic = false, a high kkin is set to approximate rapid eq. if true, kkin=1
+		if is_kinetic == false 
 			kkin = 1.0e8*nBound
 		end
 
@@ -79,8 +90,18 @@ mutable struct Langmuir <: bindingBase
 	# Define a constructor for Langmuir that accepts keyword arguments
 	function Langmuir(; ka::Vector{Float64}, kd::Vector{Float64}, qmax::Vector{Float64}, is_kinetic::Bool, kkin::Vector{Float64} = [1.0], bindStride, nBound::Vector{Bool})
 
-		kkin =  Float64.(nBound)
-		if is_kinetic == false #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
+		# For kkin, if default value is given, set the kkin value equation to nBound
+		if typeof(kkin) == Float64 
+			kkin = Float64.(nBound)*kkin
+		end
+		
+		# If length of kkin does not match nBound (nComp), throw error 
+		if length(kkin) != length(nBound)
+			throw("Length of kkin should match nBound (nComp) or be specified as a Float64")
+		end
+		
+		# If is kinetic = false, a high kkin is set to approximate rapid eq. if true, kkin=1
+		if is_kinetic == false 
 			kkin = 1.0e8*nBound
 		end
 
@@ -184,9 +205,19 @@ mutable struct SMA <: bindingBase
 	# Define a constructor for Langmuir that accepts keyword arguments
 	function SMA(; ka::Vector{Float64}, kd::Vector{Float64}, ionicCapacity::Float64, v::Vector{Float64}, sigma::Vector{Float64}, is_kinetic::Bool, kkin::Vector{Float64} = [1.0], bindStride, nBound::Vector{Bool})
 
-		kkin =  Float64.(nBound)
-		if is_kinetic == false #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
-			kkin = 1.0e3*nBound # High kkin not necessary to SMA to approximate rapid EQ
+		# For kkin, if default value is given, set the kkin value equation to nBound
+		if typeof(kkin) == Float64 
+			kkin = Float64.(nBound)*kkin
+		end
+		
+		# If length of kkin does not match nBound (nComp), throw error 
+		if length(kkin) != length(nBound)
+			throw("Length of kkin should match nBound (nComp) or be specified as a Float64")
+		end
+		
+		# If is kinetic = false, a high kkin is set to approximate rapid eq. if true, kkin=1
+		if is_kinetic == false 
+			kkin = 1.0e8*nBound
 		end
 
 		# For vector allocations
