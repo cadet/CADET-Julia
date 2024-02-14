@@ -12,10 +12,15 @@ include(joinpath(rel_path,"SRC\\DG\\modelBase.jl"))
 include(joinpath(rel_path,"SRC\\utils\\solverUtils.jl"))
 include(joinpath(rel_path,"SRC\\isotherms\\Jacobians.jl"))
 include(joinpath(rel_path,"SRC\\DG\\ConvDispOperatorDGJac.jl"))
+include(joinpath(rel_path,"SRC\\utils\\evaluate_convergence.jl"))
 
 # Import necessary Julia packages and custom modules
 using DGElements
 using ConvDispOperatorDG
-# using DifferentialEquations
+# using OrdinaryDiffEq
+using DifferentialEquations
 using SparseArrays
 using SpecialFunctions,LinearAlgebra
+
+using IncompleteLU
+# include(joinpath(rel_path,"SRC\\utils\\evaluate_ODEsolvers.jl"))
