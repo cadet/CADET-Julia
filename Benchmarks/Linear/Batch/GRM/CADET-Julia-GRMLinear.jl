@@ -78,4 +78,5 @@ evaluate_convergence(model_setup, c_analytical, nComp, nCell, polyDeg, polyDegPo
 
 
 # Evaluate ODe solvers and save results in ODETests folder 
-# evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg[1], polyDegPore[1], "GRM", joinpath(@__DIR__,"ODETests"))
+using Plots, Sundials
+[evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, [polyDeg[1]], 1, "GRM", joinpath(@__DIR__,"ODETests")) for _ in 1:2]

@@ -18,7 +18,7 @@ mutable struct Linear <: bindingBase
 	idx::UnitRange{Int64}
 	
 	# Define a constructor for Linear that accepts keyword arguments
-	function Linear(; ka::Vector{Float64}, kd::Vector{Float64}, is_kinetic::Bool, kkin::Vector{Float64}=1.0, bindStride, nBound::Vector{Bool})
+	function Linear(; ka::Vector{Float64}, kd::Vector{Float64}, is_kinetic::Bool, kkin=1.0, bindStride, nBound::Vector{Bool})
 		
 		# For kkin, if default value is given, set the kkin value equation to nBound
 		if typeof(kkin) == Float64 
@@ -88,7 +88,7 @@ mutable struct Langmuir <: bindingBase
 	idx::UnitRange{Int64}
 
 	# Define a constructor for Langmuir that accepts keyword arguments
-	function Langmuir(; ka::Vector{Float64}, kd::Vector{Float64}, qmax::Vector{Float64}, is_kinetic::Bool, kkin::Vector{Float64} = [1.0], bindStride, nBound::Vector{Bool})
+	function Langmuir(; ka::Vector{Float64}, kd::Vector{Float64}, qmax::Vector{Float64}, is_kinetic::Bool, kkin=1.0, bindStride, nBound::Vector{Bool})
 
 		# For kkin, if default value is given, set the kkin value equation to nBound
 		if typeof(kkin) == Float64 
@@ -132,7 +132,7 @@ function computeBinding!(RHS_q, cpp, qq, bind::Langmuir, nComp, bindStride, t)
 	#Components
 	@inbounds for j in 1:nComp
 		bind.idx = 1  + (j-1) * bindStride  : bindStride + (j-1) * bindStride
-		@. @views RHS_q[bind.idx] = bind.kkin[j]*(bind.ka[j]*bind.qmax[j]*cpp[bind.idx] * bind.L - bind.kd[j] * qq[bind.idx]) #dqdt = 10^4*(keq*qmax*c*(1-sum(q/qmax))-q)
+		@. @views RHS_q[bind.idx] = bind.kkin[j]*(bind.ka[j]*bind.qmax[j]*cpp[bind.idx] * bind.L - bind.kd[j] * qq[bind.idx]) #dqdt = kkin*(keq*qmax*c*(1-sum(q/qmax))-q)
 	end
 
 	nothing
@@ -203,7 +203,7 @@ mutable struct SMA <: bindingBase
 	idx::UnitRange{Int64}
 
 	# Define a constructor for Langmuir that accepts keyword arguments
-	function SMA(; ka::Vector{Float64}, kd::Vector{Float64}, ionicCapacity::Float64, v::Vector{Float64}, sigma::Vector{Float64}, is_kinetic::Bool, kkin::Vector{Float64} = [1.0], bindStride, nBound::Vector{Bool})
+	function SMA(; ka::Vector{Float64}, kd::Vector{Float64}, ionicCapacity::Float64, v::Vector{Float64}, sigma::Vector{Float64}, is_kinetic::Bool, kkin=1.0, bindStride, nBound::Vector{Bool})
 
 		# For kkin, if default value is given, set the kkin value equation to nBound
 		if typeof(kkin) == Float64 

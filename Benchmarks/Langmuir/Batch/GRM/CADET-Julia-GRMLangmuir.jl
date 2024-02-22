@@ -42,7 +42,7 @@ function model_setup(nCells, polyDeg, polyDegPore, exactInt, analJac=false, solv
 				ka = [0.1, 0.05],
 				kd = [1.0, 1.0],
 				qmax = [10.0, 10.0],
-				is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
+				is_kinetic = false, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
 				nBound = ones(Bool,model.nComp), # Number of bound components, salt not used anyway
 				bindStride = model.bindStride # Not necessary for Linear model, only for Langmuir and SMA 
 				# nBound =  [1,0,1,1] # Specify non-bound states by a zero, defaults to assume all bound states
@@ -68,4 +68,5 @@ using BenchmarkTools, Plots
 evaluate_convergence(model_setup, c_analytical, nComp, nCell, polyDeg, polyDegPore, "GRM", @__DIR__)
 
 # Evaluate ODe solvers and save results in ODETests folder 
-# evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, polyDegPore, "GRM", "ODETests//")
+using Plots, Sundials
+[evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, [polyDeg[1]], 1, "GRM", joinpath(@__DIR__,"ODETests")) for _ in 1:2]

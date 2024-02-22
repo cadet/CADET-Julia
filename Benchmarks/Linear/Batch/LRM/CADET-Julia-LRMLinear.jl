@@ -5,7 +5,7 @@
 include(joinpath(@__DIR__, fill("..", 4)..., "include.jl"))
 
 # Specify number of cells, polynomial degree and number of components 
-nCell =  [2,4,8,16]
+nCell =  [2,4,8,16,32,64,128]
 polyDeg = [4,5,6]
 nComp = 1
 
@@ -22,7 +22,6 @@ degreeu = []
 # Load semi analytical solution
 using CSV, DataFrames
 c_analytical = CSV.read((joinpath(@__DIR__,"Analytical_LRM_Linear.csv")),DataFrame)
-
 
 function model_setup(nCells, polyDeg, exactInt, analJac=false, solver=QNDF(autodiff=false))
 
@@ -72,5 +71,5 @@ using BenchmarkTools
 evaluate_convergence(model_setup, c_analytical, nComp, nCell, polyDeg, 1, "LRM", @__DIR__)
 
 # Evaluate ODe solvers and save results in ODETests folder 
-# using Plots
-# [evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, [polyDeg[1]], 1, "LRM", joinpath(@__DIR__,"ODETests")) for _ in 1:2]
+using Plots, Sundials
+[evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, [polyDeg[1]], 1, "LRM", joinpath(@__DIR__,"ODETests")) for _ in 1:2]

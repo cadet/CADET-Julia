@@ -5,7 +5,7 @@
 include(joinpath(@__DIR__, fill("..", 4)..., "include.jl"))
 
 # Specify number of cells, polynomial degree and number of components 
-nCell =  [2,4,8,16]
+nCell =  [2,4,8,16,32,64,128]
 polyDeg = [4,5,6]
 nComp = 4
 
@@ -65,4 +65,5 @@ using BenchmarkTools, Plots
 evaluate_convergence(model_setup, c_analytical, nComp, nCell, polyDeg, 1, "LRMP", @__DIR__)
 
 # Evaluate ODe solvers and save results in ODETests folder 
-# evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, [polyDeg[1]], 1, "LRMP", joinpath(@__DIR__,"ODETests"))
+using Plots, Sundials
+[evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, [polyDeg[1]], 1, "LRMP", joinpath(@__DIR__,"ODETests")) for _ in 1:2]

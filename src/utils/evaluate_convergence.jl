@@ -48,7 +48,7 @@ function evaluate_convergence(model_setup, c_analytical, nComp, nCell, polyDeg, 
 	# Write the DataFrame to a CSV file
 	CSV.write((joinpath(saveat,"Profiles_data.csv")), df1)
 
-	for h = 1 : length(polyDegPore)
+	for h = in eachindex(polyDegPore)
 		for i = 1:size(polyDeg)[1]
 			for l=1:size(nCell)[1]
 			

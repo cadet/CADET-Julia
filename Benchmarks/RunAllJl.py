@@ -29,8 +29,8 @@ def run_julia_script(script_path):
 
 
 # Batch Langmuir scripts
-# run_julia_script("Langmuir/Batch/LRM/CADET-Julia-LRMLangmuir.jl")
-# run_julia_script("Langmuir/Batch/LRMP/CADET-Julia-LRMPLangmuir.jl")
+run_julia_script("Langmuir/Batch/LRM/CADET-Julia-LRMLangmuir.jl")
+run_julia_script("Langmuir/Batch/LRMP/CADET-Julia-LRMPLangmuir.jl")
 # run_julia_script("Langmuir/Batch/GRM/CADET-Julia-GRMLangmuir.jl")
 
 
@@ -38,6 +38,6 @@ def run_julia_script(script_path):
 # Batch SMA scripts
 # run_julia_script("SMA/Batch/LRM/CADET-Julia-LRMSMA.jl")
 # run_julia_script("SMA/Batch/LRMP/CADET-Julia-LRMPSMA.jl")
-run_julia_script("SMA/Batch/GRM/CADET-Julia-GRMSMA.jl")
+# run_julia_script("SMA/Batch/GRM/CADET-Julia-GRMSMA.jl")
 
 

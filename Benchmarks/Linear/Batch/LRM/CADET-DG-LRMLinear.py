@@ -46,14 +46,14 @@ def model(ncol,polydeg,exactInt,ode):
     model.root.input.model.unit_001.unit_type = 'LUMPED_RATE_MODEL_WITHOUT_PORES_DG'
     model.root.input.model.unit_001.ncomp = n_comp 
     
-    model.root.input.model.unit_004.ncomp = n_comp
 
     ## Geometry
     model.root.input.model.unit_001.total_porosity = 0.6
     model.root.input.model.unit_001.col_dispersion = 1e-4
     model.root.input.model.unit_001.col_length = 1
     #smb_model.root.input.model.unit_004.total_porosity = 0.37+0.75*(1-0.37)
-    model.root.input.model.unit_001.velocity = 2/60 
+    u = 2/60 
+    model.root.input.model.unit_001.velocity = u 
     # model.root.input.model.unit_001.cross_section_area = 60 #From Lubke2007, is not important
     
     #Isotherm specification
@@ -106,7 +106,7 @@ def model(ncol,polydeg,exactInt,ode):
     # model.root.input.model.unit_000.sec_002.cube_coeff = [0.0,]
 
     #Connecting the unit operations: inlet, column, outlet
-    Q = 1
+    Q = u
     model.root.input.model.connections.nswitches = 1
     model.root.input.model.connections.switch_000.section = 0
     model.root.input.model.connections.switch_000.connections = [
