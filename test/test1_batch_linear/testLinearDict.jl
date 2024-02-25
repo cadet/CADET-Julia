@@ -8,90 +8,81 @@ include(joinpath(@__DIR__,"..\\..\\include.jl"))
 
 # Define the dictionary representing the model structure
 nComp = 1
-model = Dict(
-    "root" => Dict(
-        "input" => Dict(
-            "model" => Dict(
-				# Specify number of units 
-                "nunits" => 3,
-
-				# Inlet 
-                "unit_000" => Dict(
-                    "unit_type" => "INLET",
-                    "ncomp" => nComp,
-                    "inlet_type" => "PIECEWISE_CUBIC_POLY",
-					# Inlet concentrations in the sections 
-					"sec_000" => Dict(
-						"const_coeff" => [1]
-					),
-					"sec_001" => Dict(
-						"const_coeff" => [0]
-					)
-                ),
-
-				# Column 1
-                "unit_001" => Dict(
-                    "unit_type" => "LUMPED_RATE_MODEL_WITHOUT_PORES_DG",
-                    "ncomp" => nComp,
-                    "col_porosity" => 0.6,
-                    "col_dispersion" => 1e-4,
-                    "col_length" => 1,
-                    "velocity" => 2/60,
-                    "adsorption_model" => "LINEAR",
-                    "adsorption" => Dict(
-                        "is_kinetic" => true,
-                        "LIN_KA" => [1e8],
-                        "LIN_KD" => [1e8]
-                    ),
-					# Initial conditions for column 1
-                    "init_c" => [0],
-                    "init_q" => [0],
-
-					# Discretization 
-					"discretization" => Dict(
-						"polydeg" => 4,
-						"ncol" => 16,
-						"exact_integration" => 1,
-						"nbound" => ones(Bool,nComp)
-					)
-                ),
-
-				# Outlet 
-				"unit_002" => Dict(
-					"unit_type" => "OUTLET",
-                    "ncomp" => nComp,
-						),
-
-				# Solver options for switches 	
-				"solver" => Dict(
-					"sections" => Dict(
-						"nsec" => 2,
-						"section_times" => [0.0, 60, 130],
-						"section_continuity" => [0]
-						)
-				),
-
-			# Sections and switches 
-            "connections" => Dict(
-                "nswitches" => 1,
-                "switch_000" => Dict(
-                    "section" => 0,
-                    "connections" => [
-                        0, 1, -1, -1, 2/60,  # [unit_000, unit_001, all components, all components, Q/ m^3*s^-1]
-                        1, 2, -1, -1, 2/60   # [unit_001, unit_002, all components, all components, Q/ m^3*s^-1]
-                    	]
-					)
-				)
-        	),
-			"user_solution_times" => LinRange(0, 130, 131),
-					"time_integrator" => Dict(
-						"abstol" => 1e-12,
-						"algtol" => 1e-10,
-						"reltol" => 1e-10
-			)
-		)
-	)
+model = OrderedDict(
+    "root" => OrderedDict(
+        "input" => OrderedDict(
+            "model" => OrderedDict()
+        )
+    )
 )
+
+
+# Set elements sequentially for unit_000
+model["root"]["input"]["model"]["unit_000"] = OrderedDict()
+model["root"]["input"]["model"]["unit_000"]["unit_type"] = "INLET"
+model["root"]["input"]["model"]["unit_000"]["ncomp"] = nComp
+model["root"]["input"]["model"]["unit_000"]["inlet_type"] = "PIECEWISE_CUBIC_POLY"
+
+model["root"]["input"]["model"]["unit_000"]["sec_000"] = OrderedDict()
+model["root"]["input"]["model"]["unit_000"]["sec_000"]["const_coeff"] = [1]
+model["root"]["input"]["model"]["unit_000"]["sec_001"] = OrderedDict()
+model["root"]["input"]["model"]["unit_000"]["sec_001"]["const_coeff"] = [0]
+
+
+# Set elements sequentially for unit_001
+model["root"]["input"]["model"]["unit_001"] = OrderedDict()
+model["root"]["input"]["model"]["unit_001"]["unit_type"] = "LUMPED_RATE_MODEL_WITHOUT_PORES_DG"
+model["root"]["input"]["model"]["unit_001"]["ncomp"] = nComp
+model["root"]["input"]["model"]["unit_001"]["col_porosity"] = 0.6
+model["root"]["input"]["model"]["unit_001"]["col_dispersion"] = 1e-4
+model["root"]["input"]["model"]["unit_001"]["col_length"] = 1
+model["root"]["input"]["model"]["unit_001"]["velocity"] = 2/60
+model["root"]["input"]["model"]["unit_001"]["adsorption_model"] = "LINEAR"
+
+model["root"]["input"]["model"]["unit_001"]["adsorption"] = OrderedDict()
+model["root"]["input"]["model"]["unit_001"]["adsorption"]["is_kinetic"] = true
+model["root"]["input"]["model"]["unit_001"]["adsorption"]["LIN_KA"] = [1e8]
+model["root"]["input"]["model"]["unit_001"]["adsorption"]["LIN_KD"] = [1e8]
+
+model["root"]["input"]["model"]["unit_001"]["init_c"] = [0]
+model["root"]["input"]["model"]["unit_001"]["init_q"] = [0]
+
+model["root"]["input"]["model"]["unit_001"]["discretization"] = OrderedDict()
+model["root"]["input"]["model"]["unit_001"]["discretization"]["polydeg"] = 4
+model["root"]["input"]["model"]["unit_001"]["discretization"]["ncol"] = 16
+model["root"]["input"]["model"]["unit_001"]["discretization"]["exact_integration"] = 1
+model["root"]["input"]["model"]["unit_001"]["discretization"]["nbound"] = ones(Bool, nComp)
+
+# Set elements for unit_002
+model["root"]["input"]["model"]["unit_002"] = OrderedDict()
+model["root"]["input"]["model"]["unit_002"]["unit_type"] = "OUTLET"
+model["root"]["input"]["model"]["unit_002"]["ncomp"] = nComp
+
+
+# Set elements for solver
+model["root"]["input"]["solver"] = OrderedDict("sections" => OrderedDict())
+model["root"]["input"]["solver"]["sections"]["nsec"] = 2
+model["root"]["input"]["solver"]["sections"]["section_times"] = [0.0, 60, 130]
+model["root"]["input"]["solver"]["sections"]["section_continuity"] = [0]
+
+
+# Set elements for connections
+model["root"]["input"]["model"]["connections"] = OrderedDict()
+model["root"]["input"]["model"]["connections"]["nswitches"] = 1
+model["root"]["input"]["model"]["connections"]["switch_000"] = OrderedDict()
+model["root"]["input"]["model"]["connections"]["switch_000"]["section"] = 0
+model["root"]["input"]["model"]["connections"]["switch_000"]["connections"] = [0, 1, -1, -1, 2/60, 
+                                                                               1, 2, -1, -1, 2/60]
+
+
+# Set elements for user_solution_times
+model["root"]["input"]["solver"]["user_solution_times"] = LinRange(0, 130, 130+1)
+
+# Set elements for time_integrator
+model["root"]["input"]["solver"]["time_integrator"] = OrderedDict()
+model["root"]["input"]["solver"]["time_integrator"]["abstol"] = 1e-12
+model["root"]["input"]["solver"]["time_integrator"]["algtol"] = 1e-10
+model["root"]["input"]["solver"]["time_integrator"]["reltol"] = 1e-10
 
 
 

@@ -1,4 +1,6 @@
-function create_units(model::Dict)
+
+
+function create_units(model::Union{Dict, OrderedDict})
     units = Dict{String, Any}()
     inlets = []
     columns = []
@@ -16,7 +18,7 @@ function create_units(model::Dict)
             if unit_type == "INLET"
                 inlet_instance = createInlet(
                     nComp = value["ncomp"],
-					nSections = model["root"]["input"]["model"]["solver"]["sections"]["nsec"])
+					nSections = model["root"]["input"]["solver"]["sections"]["nsec"])
 					
 					# Insert inlet concentrations using the modifyInlet function 
 					num_sections = 1 # section number 
@@ -146,8 +148,8 @@ function create_units(model::Dict)
 	# Setting up sections and switch times 
 	
 	switches = Switches(
-		nSections =  model["root"]["input"]["model"]["solver"]["sections"]["nsec"], 
-		section_times = model["root"]["input"]["model"]["solver"]["sections"]["section_times"],
+		nSections =  model["root"]["input"]["solver"]["sections"]["nsec"], 
+		section_times = model["root"]["input"]["solver"]["sections"]["section_times"],
         nSwitches = model["root"]["input"]["model"]["connections"]["nswitches"],
 		nColumns = length(columns), # 
 		nComp = model["root"]["input"]["model"]["unit_000"]["ncomp"]
@@ -222,15 +224,15 @@ function create_units(model::Dict)
                         columns = Tuple(columns), 
                         switches = switches, 
                         outlets = Tuple(outlets),
-                        abstol = model["root"]["input"]["time_integrator"]["abstol"], 
-                        reltol = model["root"]["input"]["time_integrator"]["reltol"], 
-                        solution_times = collect(model["root"]["input"]["user_solution_times"]),
+                        abstol = model["root"]["input"]["solver"]["time_integrator"]["abstol"], 
+                        reltol = model["root"]["input"]["solver"]["time_integrator"]["reltol"], 
+                        solution_times = collect(model["root"]["input"]["solver"]["user_solution_times"]),
                         # dt = 1.0,
                         prototypeJacobian = true,
                         analyticalJacobian = false
                         )
     
-
+                        
     return Tuple(inlets), Tuple(outlets), Tuple(columns), switches, solverOptions
 end
 
