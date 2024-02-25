@@ -257,6 +257,16 @@ function get_bind(value,bindstride)
 						)
 
 	elseif value["adsorption_model"]=="STERIC_MASS_ACTION"
+        bind = SMA(
+                    ka = value["adsorption"]["SMA_KA"],
+                    kd = value["adsorption"]["SMA_Kd"],
+                    ionicCapacity = value["adsorption"]["SMA_lambda"],
+                    v = value["adsorption"]["SMA_nu"], # [-], charge
+                    sigma = value["adsorption"]["SMA_sigma"], # [-], shielding
+                    is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
+                    nBound = value["discretization"]["nbound"], # Number of bound components, salt not used anyway
+                    bindStride = bindstride # 
+                    )
 
 	else
 		throw("Binding model not supported")
