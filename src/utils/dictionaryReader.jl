@@ -97,8 +97,20 @@ function create_units(model::Dict)
 
 			elseif unit_type == "LUMPED_RATE_MODEL_WITH_PORES_DG"
                 # Create column instance
-                # Replace the following line with your column instantiation logic
-                column_instance = LRMP()
+                column_instance = LRMP(nComp = value["ncomp"], 
+                                        colLength = value["col_length"], 
+                                        d_ax = value["col_dispersion"], 
+                                        eps_c = value["col_porosity"], 
+                                        eps_p = value["par_porosity"],
+                                        kf = value["film_diffusion"],
+                                        Rp = value["par_radius"],
+                                        c0 = value["init_c"],
+                                        cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
+                                        q0 = value["init_q"],
+                                        polyDeg = value["discretization"]["polydeg"], # defaults to 4
+                                        nCells = value["discretization"]["ncol"], # defaults to 8
+                                        exactInt = value["discretization"]["exact_integration"]
+                                        )
 				column_instance.bind = get_bind(value,column_instance.bindStride)
                 columns[unit_name] = column_instance
                 units[unit_name] = column_instance
@@ -106,7 +118,21 @@ function create_units(model::Dict)
 			elseif unit_type == "GENERAL_RATE_MODEL_DG"
                 # Create column instance
                 # Replace the following line with your column instantiation logic
-                column_instance = GRM()
+                column_instance = GRM(nComp = value["ncomp"], 
+                                        colLength = value["col_length"], 
+                                        d_ax = value["col_dispersion"], 
+                                        eps_c = value["col_porosity"], 
+                                        eps_p = value["par_porosity"],
+                                        kf = value["film_diffusion"],
+                                        Rp = value["par_radius"],
+                                        Rc = haskey(value, "par_coreradius") ? value["par_coreradius"] : 0,
+                                        Dp = value["par_diffusion"],
+                                        c0 = value["init_c"],
+                                        cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
+                                        q0 = value["init_q"],
+                                        polyDeg = value["discretization"]["polydeg"], # defaults to 4
+                                        nCells = value["discretization"]["ncol"], # defaults to 8
+                                        exactInt = value["discretization"]["exact_integration"])
 				column_instance.bind = get_bind(value,column_instance.bindStride)
                 columns[unit_name] = column_instance
                 units[unit_name] = column_instance

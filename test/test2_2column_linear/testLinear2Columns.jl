@@ -126,7 +126,6 @@ model = Dict(
 		)
 	)
 )
-
 inlets, outlets, columns, switches, solverOptions = create_units(model)
 
 
