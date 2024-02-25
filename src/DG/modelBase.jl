@@ -226,7 +226,7 @@ function computeTransport!(RHS, RHS_q, x, m::LRM, t, section, sink, switches, id
 					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
 
 		# Convection Dispersion term
-		m.cpp = @view x[m.idx .+ idx_units[sink]] # mobile phase
+		m.cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase
 		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 		# Mobile phase RHS 
@@ -346,7 +346,7 @@ mutable struct LRMP <: modelBase
 end
 
 # Define a function to compute the transport term for the LRMP
-function computeTransport!(RHS, RHS_q, x, m::LRMP, t, i)
+function computeTransport!(RHS, RHS_q, x, m::LRMP, t, section, sink, switches, idx_units)
 	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
@@ -367,14 +367,15 @@ function computeTransport!(RHS, RHS_q, x, m::LRMP, t, i)
 					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
 		
 		# Convection Dispersion term	
-		m.cpp = @view x[m.idx .+ idx_units[sink]] # mobile phase		
+		# m.cpp = @view x[m.idx .+ idx_units[sink]] # mobile phase
+		m.cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase		
 		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 		# Mobile phase
-		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (m.cpp - x[m.idx_p .+ idx_units[sink]])
+		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
 
 		# Pore phase dcp/dt = MT/eps_p - Fp dq/dt
-		@. @views RHS[m.idx_p .+ idx_units[sink]] = 3 / m.Rp / m.eps_p * m.kf[j] * (m.cpp - x[m.idx_p .+ idx_units[sink]]) - m.Fp * RHS_q[m.idx] 
+		@. @views RHS[m.idx_p .+ idx_units[sink]] = 3 / m.Rp / m.eps_p * m.kf[j] * (x[m.idx .+ idx_units[sink]]- x[m.idx_p .+ idx_units[sink]]) - m.Fp * RHS_q[m.idx] 
 
 	end
 	
@@ -486,6 +487,10 @@ mutable struct GRM <: modelBase
 		cpp = zeros(Float64, PoreOpInstance.stridePore)
 		RHS_q = zeros(Float64, PoreOpInstance.stridePore)
 		qq = zeros(Float64, PoreOpInstance.stridePore)
+
+		# Solution_outlet as well 
+		solution_outlet = zeros(Float64,1,nComp)
+		solution_times = Float64[]
 		
 		# Set initial condition vectors 
 		c0, cp0, q0 = initialConditionSpecification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
@@ -508,7 +513,7 @@ end
 
 
 # Define a function to compute the transport term for the LRMP
-function computeTransport!(RHS, RHS_q, x, m::GRM, t, i)
+function computeTransport!(RHS, RHS_q, x, m::GRM, t, section, sink, switches, idx_units)
 	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
@@ -525,7 +530,7 @@ function computeTransport!(RHS, RHS_q, x, m::GRM, t, i)
 					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
 		
 		# Convection Dispersion term	
-		m.cpp = @view x[m.idx .+ idx_units[sink]] # mobile phase		
+		m.cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase
 		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 

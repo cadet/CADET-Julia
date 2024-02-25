@@ -86,7 +86,7 @@ function create_units(model::Union{Dict, OrderedDict})
 									c0 = value["init_c"], 
 									q0 = value["init_q"],
 									# save_output = true, # defaults to true
-									polyDeg = value["discretization"]["polydeg"], # defaults to 4
+									polyDeg = value["discretization"]["polyDeg"], # defaults to 4
 									nCells = value["discretization"]["ncol"], # defaults to 8
 									exactInt = value["discretization"]["exact_integration"] # 
 									)
@@ -109,12 +109,15 @@ function create_units(model::Union{Dict, OrderedDict})
                                         c0 = value["init_c"],
                                         cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
                                         q0 = value["init_q"],
-                                        polyDeg = value["discretization"]["polydeg"], # defaults to 4
+                                        polyDeg = value["discretization"]["polyDeg"], # defaults to 4
                                         nCells = value["discretization"]["ncol"], # defaults to 8
                                         exactInt = value["discretization"]["exact_integration"]
                                         )
 				column_instance.bind = get_bind(value,column_instance.bindStride)
-                columns[unit_name] = column_instance
+                push!(columns, column_instance)
+                # Assign ID and number in columns
+                push!(columnNumber, length(columnNumber)+1)
+                push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
 
 			elseif unit_type == "GENERAL_RATE_MODEL_DG"
@@ -132,11 +135,15 @@ function create_units(model::Union{Dict, OrderedDict})
                                         c0 = value["init_c"],
                                         cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
                                         q0 = value["init_q"],
-                                        polyDeg = value["discretization"]["polydeg"], # defaults to 4
+                                        polyDeg = value["discretization"]["polyDeg"], # defaults to 4
+                                        polyDegPore = value["discretization"]["polyDegPore"], # defaults to 4
                                         nCells = value["discretization"]["ncol"], # defaults to 8
                                         exactInt = value["discretization"]["exact_integration"])
 				column_instance.bind = get_bind(value,column_instance.bindStride)
-                columns[unit_name] = column_instance
+                push!(columns, column_instance)
+                # Assign ID and number in columns
+                push!(columnNumber, length(columnNumber)+1)
+                push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
 
             else
@@ -259,10 +266,10 @@ function get_bind(value,bindstride)
 	elseif value["adsorption_model"]=="STERIC_MASS_ACTION"
         bind = SMA(
                     ka = value["adsorption"]["SMA_KA"],
-                    kd = value["adsorption"]["SMA_Kd"],
-                    ionicCapacity = value["adsorption"]["SMA_lambda"],
-                    v = value["adsorption"]["SMA_nu"], # [-], charge
-                    sigma = value["adsorption"]["SMA_sigma"], # [-], shielding
+                    kd = value["adsorption"]["SMA_KD"],
+                    ionicCapacity = value["adsorption"]["SMA_LAMBDA"],
+                    v = value["adsorption"]["SMA_NU"], # [-], charge
+                    sigma = value["adsorption"]["SMA_SIGMA"], # [-], shielding
                     is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
                     nBound = value["discretization"]["nbound"], # Number of bound components, salt not used anyway
                     bindStride = bindstride # 

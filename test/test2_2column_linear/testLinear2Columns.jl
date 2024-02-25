@@ -37,15 +37,15 @@ model["root"]["input"]["model"]["unit_001"]["velocity"] = 2/60
 model["root"]["input"]["model"]["unit_001"]["adsorption_model"] = "LINEAR"
 
 model["root"]["input"]["model"]["unit_001"]["adsorption"] = OrderedDict()
-model["root"]["input"]["model"]["unit_001"]["adsorption"]["is_kinetic"] = true
-model["root"]["input"]["model"]["unit_001"]["adsorption"]["LIN_KA"] = [1e8]
-model["root"]["input"]["model"]["unit_001"]["adsorption"]["LIN_KD"] = [1e8]
+model["root"]["input"]["model"]["unit_001"]["adsorption"]["is_kinetic"] = false
+model["root"]["input"]["model"]["unit_001"]["adsorption"]["LIN_KA"] = [1.0]
+model["root"]["input"]["model"]["unit_001"]["adsorption"]["LIN_KD"] = [1.0]
 
 model["root"]["input"]["model"]["unit_001"]["init_c"] = [0]
 model["root"]["input"]["model"]["unit_001"]["init_q"] = [0]
 
 model["root"]["input"]["model"]["unit_001"]["discretization"] = OrderedDict()
-model["root"]["input"]["model"]["unit_001"]["discretization"]["polydeg"] = 4
+model["root"]["input"]["model"]["unit_001"]["discretization"]["polyDeg"] = 4
 model["root"]["input"]["model"]["unit_001"]["discretization"]["ncol"] = 16
 model["root"]["input"]["model"]["unit_001"]["discretization"]["exact_integration"] = 1
 model["root"]["input"]["model"]["unit_001"]["discretization"]["nbound"] = ones(Bool, nComp)
