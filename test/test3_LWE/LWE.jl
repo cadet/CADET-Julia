@@ -115,12 +115,14 @@ solve_model(
 # Compare to analytical solution 
 using CSV,DataFrames 
 c_analytical = CSV.read((joinpath(@__DIR__,"LWE.csv")),DataFrame)
-err = 0 
+
+err = [0.0]
+
 for i =1:nComp
-    err = maximum([err, maximum(abs.(columns[1].solution_outlet[:,i]-c_analytical[:,"C$(i-1)"]))])
+    err[1] = maximum([err[1], maximum(abs.(columns[1].solution_outlet[:,i]-c_analytical[:,"C$(i-1)"]))])
 end
-if err<1e-3
-    println("Test succesful - error lower than 1e-5")
+if err[1]<1e-3
+    println("Test succesful - error lower than 1e-3")
 else
-    println("Test unsuccesful - error larger than 1e-5")
+    println("Test unsuccesful - error larger than 1e-3")
 end
