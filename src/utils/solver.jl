@@ -62,7 +62,7 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 		#Extract solution in solution_outlet in each unit 
 		for j = 1: solverOptions.nColumns
 			for k = 1:columns[j].nComp 
-				# Fix the indexing in the matrix!
+				
 				columns[j].solution_outlet[length(columns[j].solution_times) + 1 : length(columns[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k*columns[j].ConvDispOpInstance.nPoints + solverOptions.idx_units[j]).u
 			end 
 			append!(columns[j].solution_times, sol.t[2:end] .+ tspan[1])
@@ -73,7 +73,7 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 			for j in eachindex(outlets)
 				if outlets[j].idx_outlet != [-1]
 					for k = 1:columns[1].nComp
-						# Fix the indexing in the matrix!
+						
 						outlets[j].solution_outlet[length(outlets[j].solution_times) + 1 : length(outlets[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k*columns[outlets[j].idx_unit[switches.switchSetup[i]]].ConvDispOpInstance.nPoints + outlets[j].idx_outlet[switches.switchSetup[i]]).u
 					end 
 					append!(outlets[j].solution_times,sol.t[2:end] .+ tspan[1])
@@ -82,7 +82,7 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 		end
 
 		# Write to HDF5 using a function if relevant 
-		
+		tt = columns[1].solution_outlet
 		
 	end
     return nothing
@@ -100,7 +100,7 @@ function problem!(RHS, x, p, t)
 		columns[h].cpp = @view x[1 + columns[h].adsStride + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp + idx_units[h]]
 		columns[h].qq = @view x[1 + columns[h].adsStride + columns[h].bindStride*columns[h].nComp + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp * 2 + idx_units[h]]
 		RHS_q = @view RHS[1 + columns[h].adsStride + columns[h].bindStride * columns[h].nComp + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp * 2 + idx_units[h]]
-		computeBinding!(RHS_q,columns[h].cpp,columns[h].qq,columns[h].bind,columns[h].nComp,columns[h].bindStride, t)
+		computeBinding!(RHS_q, columns[h].cpp, columns[h].qq, columns[h].bind, columns[h].nComp, columns[h].bindStride, t)
 
 		# Compute transport term
 		computeTransport!(RHS, RHS_q, x, columns[h], t, i, h, switches, idx_units)

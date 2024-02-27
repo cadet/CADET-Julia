@@ -223,11 +223,12 @@ function computeTransport!(RHS, RHS_q, x, m::LRM, t, section, sink, switches, id
 					switches.connectionInstance.cIn_l[section,sink, j]*t +
 					switches.connectionInstance.cIn_q[section,sink, j]*t^2 +
 					switches.connectionInstance.cIn_cube[section,sink, j]*t^3) * switches.connectionInstance.u_inlet[switches.switchSetup[section], sink] +
-					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
+					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / 
+					switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
 
 		# Convection Dispersion term
-		m.cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase #
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 		# Mobile phase RHS 
 		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * RHS_q[m.idx]

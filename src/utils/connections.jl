@@ -134,12 +134,28 @@ mutable struct connection
 
 		# The section specifications from the inlet should be copied 
 		# switches.connectionInstance.cIn[section, sink, comp]
-		switches.connectionInstance.cIn_c[:, sink,:] = source.cIn_c[:,:]
-		switches.connectionInstance.cIn_l[:, sink,:] = source.cIn_l[:,:]
-		switches.connectionInstance.cIn_q[:, sink,:] = source.cIn_q[:,:]
-		switches.connectionInstance.cIn_cube[:, sink,:] = source.cIn_cube[:,:]
-		
-		# new(u_unit, u_inlet, u_tot, c_connect, idx_connect, cIn_c, cIn_l, cIn_q, cIn_cube)
+		if switches.nSwitches<2
+			switches.connectionInstance.cIn_c[:, sink, :] = source.cIn_c[:,:]
+			switches.connectionInstance.cIn_l[:, sink, :] = source.cIn_l[:,:]
+			switches.connectionInstance.cIn_q[:, sink, :] = source.cIn_q[:,:]
+			switches.connectionInstance.cIn_cube[:, sink, :] = source.cIn_cube[:,:]
+
+		else
+			# Need something to fill out values in between two section times and 1 switch
+			# For example, if switch is constant throughout two section times, this should only be specified once. 
+			for i in size(switches.connectionInstance.cIn_c)[2]
+				switches.connectionInstance.cIn_c[section+1:end, i, :] .= 0.0
+				switches.connectionInstance.cIn_l[section+1:end, i, :] .= 0.0
+				switches.connectionInstance.cIn_q[section+1:end, i, :] .= 0.0
+				switches.connectionInstance.cIn_cube[section+1:end, i, :] .= 0.0
+			end
+
+			# Set inlet concentration 
+			switches.connectionInstance.cIn_c[section, sink, :] = source.cIn_c[section, :]
+			switches.connectionInstance.cIn_l[section, sink, :] = source.cIn_l[section, :]
+			switches.connectionInstance.cIn_q[section, sink, :] = source.cIn_q[section, :]
+			switches.connectionInstance.cIn_cube[section, sink, :] = source.cIn_cube[section, :]
+		end
 	end
 	
 	# If a column is specified as input i.e., in series 
@@ -155,13 +171,12 @@ mutable struct connection
 		# edit u_total, Q and C_connect 
 		switches.connectionInstance.u_unit[switch, sink] = u
 		switches.connectionInstance.u_tot[switch, sink] = switches.connectionInstance.u_inlet[switch, sink] + switches.connectionInstance.u_unit[switch, sink]
-		switches.connectionInstance.c_connect[switch, sink,:] =  ones(Float64,nComp) # connection matrix 
-		for j in 1:nComp 
+		switches.connectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
+		for j in 1:model.nComp 
 			# The following line assumes all transport models have the same discretization! 
-			switches.connectionInstance.idx_connect[switch, sink, j] = model.bindStride + (j-1) * model.bindStride  + (columnNumber-1) * (model.adsStride + 2*model.bindStride)
+			switches.connectionInstance.idx_connect[switch, sink, j] = model.bindStride + (j-1) * model.bindStride  + (columnNumber-1) * (model.adsStride + 2*model.bindStride*model.nComp)
 		end
 		
-		# new(u_unit, u_inlet, u_tot, c_connect, idx_connect, cIn_c, cIn_l, cIn_q, cIn_cube)
 	end
 
 	# Default configuration 

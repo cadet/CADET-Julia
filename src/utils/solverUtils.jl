@@ -100,23 +100,16 @@ mutable struct solverCache
 		# it checks if u_tot = -1 (default value), then that will be the last specified switch and the remaining will be repeated. 
 		# Fill in elements in between the non-filled values of the switchSetup 
 		# This means replace the -1 
-		rearrangeSwitchSetup!(switches.switchSetup, switches.nSwitches)
-
-		# repeat_pattern!(switches.connectionInstance.u_unit, switches.connectionInstance.u_tot)
-		# repeat_pattern!(switches.connectionInstance.u_inlet, switches.connectionInstance.u_tot)
-		# repeat_pattern!(switches.connectionInstance.c_connect, switches.connectionInstance.u_tot)
-		# repeat_pattern!(switches.connectionInstance.idx_connect, switches.connectionInstance.u_tot)
-		# repeat_pattern!(switches.connectionInstance.cIn_c, switches.connectionInstance.cIn_c)
-		# repeat_pattern!(switches.connectionInstance.cIn_l, switches.connectionInstance.cIn_l)
-		# repeat_pattern!(switches.connectionInstance.cIn_q, switches.connectionInstance.cIn_q)
-		# repeat_pattern!(switches.connectionInstance.cIn_cube, switches.connectionInstance.cIn_cube)
-		# for j in eachindex(outlets)
-		# 	if outlets[j].idx_unit != [-1] # if an outlet is specified, repeat 
-		# 		repeat_pattern!(outlets[j].idx_unit, switches.connectionInstance.u_tot)
-		# 		repeat_pattern!(outlets[j].idx_outlet, switches.connectionInstance.u_tot)
-		# 	end
-		# end
-		# repeat_pattern!(switches.connectionInstance.u_tot, switches.connectionInstance.u_tot)
+		switches.switchSetup = rearrangeSwitchSetup(switches)
+		
+		# If having multiple switches, 
+		if switches.nSwitches>1
+			# Repeat the concentration specifications 
+			switches.connectionInstance.cIn_c = repeat_pattern(switches.connectionInstance.cIn_c, switches.switchSetup, switches.nSwitches)
+			switches.connectionInstance.cIn_l = repeat_pattern(switches.connectionInstance.cIn_l, switches.switchSetup, switches.nSwitches)
+			switches.connectionInstance.cIn_q = repeat_pattern(switches.connectionInstance.cIn_q, switches.switchSetup, switches.nSwitches)
+			switches.connectionInstance.cIn_cube = repeat_pattern(switches.connectionInstance.cIn_cube, switches.switchSetup, switches.nSwitches)
+		end
 		
 		
 		# Fill in initial conditions in solution_outlet matrices
@@ -144,12 +137,16 @@ mutable struct solverCache
 	end
 end
 
-function rearrangeSwitchSetup!(switchSetup, nSwitches)
+function rearrangeSwitchSetup(switches)
+	a = -ones(Int64,length(switches.switchSetup))
+
 	#if there is only one switch
-	if nSwitches==1 
-		switchSetup[:] .= switchSetup[1]
+	if switches.nSwitches==1 
+		a[:] .= switches.switchSetup[1]
 	#if there are two switches
-	elseif nSwitches<1 #
-		switchSetup = repeat_pattern(switchSetup)
+	elseif switches.nSwitches>1 #
+		# The inlet concentrations are following a repetetive pattern 
+		a = repeat_pattern(switches.switchSetup)
 	end
+	return a
 end

@@ -36,10 +36,10 @@ function create_units(model::Union{Dict, OrderedDict})
 								num_iterator = "$(num_sections-1)"
 							end
                             # Set default values
-							cIn_c = zeros(Float64, nComp)
-							cIn_l = zeros(Float64, nComp)	
-							cIn_q = zeros(Float64, nComp)
-							cIn_cube = zeros(Float64, nComp)
+							cIn_c = zeros(Float64, value["ncomp"])
+							cIn_l = zeros(Float64, value["ncomp"])	
+							cIn_q = zeros(Float64, value["ncomp"])
+							cIn_cube = zeros(Float64, value["ncomp"])
 
 							if haskey(value["sec_$(num_iterator)"],"const_coeff")
 								cIn_c = Float64.(value["sec_$(num_iterator)"]["const_coeff"])
@@ -186,7 +186,7 @@ function create_units(model::Union{Dict, OrderedDict})
             if typeof(sink)<:modelBase # if sink is column 
                 # if both cross sectional area is given, infer via volumetric flowrate
                 if haskey(model["root"]["input"]["model"][sinkID],"cross_section_area")
-                    u = connectionMatrix[j,5]/(model["root"]["input"]["model"][sink]["cross_section_area"]*sink.eps_c)
+                    u = connectionMatrix[j,5]/(model["root"]["input"]["model"][sinkID]["cross_section_area"]*sink.eps_c)
                 else
                     u = model["root"]["input"]["model"][sinkID]["velocity"]
                 end
@@ -247,7 +247,7 @@ function get_bind(value,bindstride)
 	if value["adsorption_model"]=="LINEAR"
 		bind = Linear(
 						ka = value["adsorption"]["LIN_KA"],
-						kd = value["adsorption"]["LIN_KA"],
+						kd = value["adsorption"]["LIN_KD"],
 						is_kinetic = value["adsorption"]["is_kinetic"], #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
 						nBound = value["discretization"]["nbound"], # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
 						bindStride = bindstride, # Not necessary for Linear model, only for Langmuir and SMA		
@@ -256,7 +256,7 @@ function get_bind(value,bindstride)
 	elseif value["adsorption_model"]=="MULTI_COMPONENT_LANGMUIR"
 		bind = Langmuir(
 						ka = value["adsorption"]["MCL_KA"],
-						kd = value["adsorption"]["MCL_KA"],
+						kd = value["adsorption"]["MCL_KD"],
 						qmax = value["adsorption"]["MCL_QMAX"],
 						is_kinetic = value["adsorption"]["is_kinetic"], #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
 						nBound = value["discretization"]["nbound"], # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
