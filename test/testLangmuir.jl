@@ -16,13 +16,13 @@ model = LRM(
 	d_ax = 1e-4, 
 	eps_c = 0.4, 
 	u = 0.1, 
-	switch_time = [0, 12, 50], 
+	switch_time = [0, 12, 40], 
 	cIn_c = [[10,10] [0,0]], # Inlet concentration at each switch time
 	# cIn_l = [[0] [0]], # Inlet concentration linear slope at each switch time
 	# cIn_q = [[0] [0]], # Inlet concentration quadratic slope at each switch time
 	# cIn_cube = [[0] [0]], # Inlet concentration cubic slope at each switch time
 	# polyDeg = 4, # defaults to 4
-	# nCells = 4 # defaults to 8
+	nCells = 32 # defaults to 8
 	# exactInt = 1 # 
 	)
 
@@ -46,10 +46,11 @@ solverOptions = solverCache(model, # Should refer to the model instance
 					# reltol = 1e-10,
 					dt = 0.1,
 					# prototypeJacobian = true, #defaults to true
-					analyticalJacobian = true #defaults to false
+					analyticalJacobian = false #defaults to false
 					)
 
 output = solve_model(model, bind, solverOptions)
+
 
 using Plots
 plot(output[:,1])
@@ -81,7 +82,7 @@ model = LRMP(
 	# cIn_q = [[0] [0]], # Inlet concentration quadratic slope at each switch time
 	# cIn_cube = [[0] [0]], # Inlet concentration cubic slope at each switch time
 	# polyDeg = 4, # defaults to 4
-	# nCells = 4 # defaults to 8
+	# nCells = 8 # defaults to 8
 	# exactInt = 1 # 
 	)
 
@@ -127,7 +128,7 @@ model = GRM(
 	nComp = 2, 
 	colLength = 0.014, 
 	d_ax = 5.75e-8,
-	Dp = [6.07e-10,6.07e-10], 
+	Dp = [6.07e-11,6.07e-11], 
 	eps_c = 0.37, 
 	eps_p = 0.75,
 	u = 5.74e-4, 

@@ -2,71 +2,10 @@
 
 
 
-
-
-# Solve the differential equations using the ODE solver
-function solve_model(model::modelBase, bind::bindingBase, solverOptions, alg=QNDF(autodiff=false))
-	
-	if solverOptions.prototypeJacobian == true
-		# set up a parameter vector 
-		p = (model, bind, model.RHS_q, 2)
-		# determine jacobian prototype using finite differences - saves compilation time but perhaps change
-		jacProto = sparse(JacFiniteDiff(problem!,p,solverOptions.x0 .+ 1e-6,1e-8))
-		
-		# set dq0dq to zero when computing SMA w. formulation 1 as dq/dt is not needed to be computed
-		# This makes it slightly faster
-		# if typeof(bind)==SMA 
-		# 	@. @views jacProto[1 + model.adsStride + model.nComp*model.bindStride : model.bindStride + model.adsStride + model.nComp*model.bindStride] = 0
-		# end
-	else
-		# make jacProto empty such that it are not used
-		jacProto = nothing
-	end
-
-	# If Analytical Jacobian == yes, set analytical Jacobian
-	if solverOptions.analyticalJacobian == true
-		# determine static jacobian and allocation matrices that are stored in p_jac
-		p_jac = JacStat(model)
-		analJac = analJac! #refers to the function
-	else
-		# make p_jac and analJac empty such that they are not used
-		p_jac = nothing
-		analJac = nothing
-	end
-
-
-	#running simulations
-	for i in 2:length(model.switch_time) 
-		# update the tspan and the inlets through i to the system
-		tspan = (model.switch_time[i-1], model.switch_time[i])
-		p = (model, bind, model.RHS_q, i, p_jac)
-		fun = ODEFunction(problem!; jac_prototype = jacProto, jac = analJac)
-		prob = ODEProblem(fun, solverOptions.x0, (0, tspan[2]-tspan[1]), p)
-		sol = solve(prob, alg, saveat=solverOptions.dt, abstol=solverOptions.abstol, reltol=solverOptions.reltol)
-		
-		#New initial conditions
-		solverOptions.x0 = sol.u[end]
-		
-		#Extract solution in output matrix
-		for j =1:model.nComp
-			solverOptions.output[Int64(tspan[1]/solverOptions.dt)+2:Int64(tspan[2]/solverOptions.dt)+1,j] = sol(sol.t[2:end],idxs=j*model.ConvDispOpInstance.nPoints).u
-		end
-	end
-    return solverOptions.output
-end
-
-
-
-
-mutable struct solverCache{T<:modelBase}
+mutable struct solverCache
 	# Here, initial conditions and solver options are specified. 
 
-	modelBase::T # using the chosen model, LRM, LRMP or GRM
-
 	# Initial conditions: can be a vector of all x0, could be a single x0 or could be different x0 for every component
-	c0::Union{Float64, Vector{Float64}} # defaults to 0
-	cp0::Union{Float64, Vector{Float64}} # if not specified, defaults to c0
-	q0::Union{Float64, Vector{Float64}} # defaults to 0
 	x0::Vector{Float64} #if x0 is given as input, defaults to 0
 	
 	# tolerances for the solver, defaults to 1e-12, 1e-10
@@ -75,113 +14,139 @@ mutable struct solverCache{T<:modelBase}
 
 	# time step for solution
 	dt::Float64
-
-	# Output matrix
-	output::Matrix{Float64}
+	solution_times::Vector{Float64}
 
 	# solver options
 	prototypeJacobian::Bool # Generate a prototype jacobian - makes it run a lot faster
 	analyticalJacobian::Bool # Use analytical jacobian - does not necessary improve performance
-	# the solver cannot be stored because when changing the solver, the datatype is also changed..
+	
+	idx_units::Vector{Int64}
+	nColumns::Int64
+	# the ODE solver cannot be stored because when changing the solver, the datatype is also changed..
 
-	function solverCache(model::T; c0 = 0, cp0 = -1, q0 = 0, x0 = 0, abstol=1e-12, reltol=1e-10, dt=1.0, prototypeJacobian=true, analyticalJacobian=false) where T<:modelBase
+	function solverCache(; columns::Union{Tuple,modelBase}, switches::Switches, outlets::Union{Tuple,createOutlet} = (0,), x0 = [0], abstol=1e-12, reltol=1e-10, dt=1.0, solution_times=[0], prototypeJacobian=true, analyticalJacobian=false)
 
-		# This is to set up the x0 vector correctly
-		if x0 == 0
-			if c0 == 0 #if empty column is provided or defaulted
-				c0 = zeros(Float64, model.nComp * model.ConvDispOpInstance.nPoints)
+		# To have outlets as a tuple
+		if typeof(columns)<:modelBase
+			columns = (columns,)
+		end
 
-			elseif length(c0) == model.nComp #if initial conditions for each component is given
-				c00 = zeros(Float64, model.nComp * model.ConvDispOpInstance.nPoints)
-				for i = 1:model.nComp
-					c00[1 + (i-1) * model.ConvDispOpInstance.nPoints : model.ConvDispOpInstance.nPoints + (i-1) * model.ConvDispOpInstance.nPoints] .= c0[i]
-				end
-				c0 = c00
-			elseif length(c0) == model.nComp * model.ConvDispOpInstance.nPoints #if initial conditions are given as whole vector
-				nothing
+		# To have outlets as a tuple
+		if typeof(outlets)==createOutlet
+			outlets = (outlets,)
+		end
+
+		nColumns = length(columns)
+
+		# Determining the indices for when a new unit is starting and setting up the solution_outlet matrices
+		idx_units = zeros(Int64, nColumns)
+		for i = 2:nColumns 
+			idx_units[i] = idx_units[i-1] + columns[i-1].adsStride +columns[i-1].bindStride*columns[i-1].nComp*2
+		end
+		
+		# Solution times 
+		if solution_times != [0] && length(solution_times) >= 2
+			dt = solution_times[2] - solution_times[1]
+		elseif solution_times == [0] # if solution times are not specified, determine based on dt 
+			solution_times = 0:dt:switches.section_times[end]
+		end
+
+		x0len = 0
+		for i = 1:nColumns
+			x0len += columns[i].adsStride + columns[i].bindStride*columns[i].nComp*2
+			
+			# Constructing the solution outlet for each unit 
+			columns[i].solution_outlet = -ones(Float64,length(solution_times),columns[i].nComp)
+			columns[i].solution_times = Float64[]
+			#columns[i].solution_outlet[:,end] = solverOptions.solution_times #should only be added once solved 
+			
+			# Attaching the correct index to the outlet of a unit 
+			if outlets == (0,)
+				continue
 			else 
-				throw(error("Initial concentrations incorrectly written"))
+				for j in eachindex(outlets)
+					for k in eachindex(outlets[j].idx_unit)
+						if outlets[j].idx_unit[k] == i # if connection between column and outlet 
+							outlets[j].idx_outlet[k] = idx_units[i] # set the right index 
+						end 
+					end
+					outlets[j].solution_outlet = -ones(Float64,length(solution_times),columns[i].nComp)
+				end
 			end
+		end
 
-			# for pore phase concentrations
-			if cp0 == -1 # if defaulted, use the c0 concentrations
-				cp0 = zeros(Float64, model.nComp * model.bindStride)
-				for i = 1:model.nComp
-					cp0[1 + (i-1) * model.bindStride : model.bindStride + (i-1) * model.bindStride] .= c0[1 + (i-1) * model.ConvDispOpInstance.nPoints]
-				end
-			elseif cp0 == 0 # if provided as zero, set zero for all components
-				cp0 = zeros(Float64, model.nComp * model.bindStride)
+		# Set up the initial conditions, x0 vector, correctly
+		if x0 == [0]
+			# if x0 is defaulted, take the values for c0, cp0 and q0 for each unit 
+			x0 = zeros(Float64,x0len)
 
-			elseif length(c0) == model.nComp #if initial conditions for each component is given
-				cp00 = zeros(Float64, model.nComp * model.bindStride)
-				for i = 1:model.nComp
-					cp00[1 + (i-1) * model.bindStride : model.bindStride + (i-1) * model.bindStride] .= cp0[i]
-				end
-				cp0 = cp00
-			elseif length(cp0) == model.nComp * model.bindStride #if initial conditions are given as whole vector
-				nothing
-			else 
-				throw(error("Initial concentrations incorrectly written"))
+			for i = 1: nColumns
+				
+				x0[1 + idx_units[i] : idx_units[i] + columns[i].ConvDispOpInstance.nPoints * columns[i].nComp] = columns[i].c0 
+				x0[1 + idx_units[i] + columns[i].adsStride : idx_units[i] + columns[i].adsStride + columns[i].bindStride * columns[i].nComp] =columns[i].cp0 
+				x0[1 + idx_units[i] + columns[i].adsStride + columns[i].bindStride*columns[i].nComp : idx_units[i] + columns[i].adsStride + columns[i].bindStride * columns[i].nComp * 2] = columns[i].q0
 			end 
-
-			# for stationary phase concentrations
-			if q0 == 0 #if empty column is provided or defaulted
-				q0 = zeros(Float64, model.nComp * model.bindStride)
-
-			elseif length(q0) == model.nComp #if initial conditions for each component is given
-				q00 = zeros(Float64, model.nComp * model.bindStride)
-				for i = 1:model.nComp
-					q00[1 + (i-1) * model.bindStride : model.bindStride + (i-1) * model.bindStride] .= q0[i]
-				end
-				q0 = q00
-			elseif length(q0) == model.nComp * model.bindStride #if initial conditions are given as whole vector
-				nothing
-			else 
-				throw(error("Initial concentrations incorrectly written"))
-			end 
-
-			#construct x0 
-			if model.adsStride == 0 #only occurs for LRM
-				x0 = vcat(c0,q0) #No pore phase for the LRM
-			else
-				x0 = vcat(c0,cp0,q0)
-			end
-		elseif length(x0) == model.adsStride + model.bindStride*model.nComp*2 #if user provides x0  
-			nothing
+		elseif length(x0) == x0len # if the whole x0 is specified 
+			nothing 
 		else 
-			throw(error("x0 does not have the correct length"))
+			throw("x0 not correctly specified. The length must match the length of all the units initial conditions. If not specifying, the initial conditions from each unit is used.")
+	
+		end 
+
+		# Setting up the switches such that they follow a repeated pattern. 
+		# that means if the number of section times are longer than the number of switches, the switches should be repeated 
+		# such that one does not need to specify all the switches in for example in an SMB but only one cycle. 
+		# it is done so in a row-wise manner such that if a switch is not determined at a specific section time, it will be overwritten by the cycle 
+		# it checks if u_tot = -1 (default value), then that will be the last specified switch and the remaining will be repeated. 
+		# Fill in elements in between the non-filled values of the switchSetup 
+		# This means replace the -1 
+		switches.switchSetup = rearrangeSwitchSetup(switches)
+		
+		# If having multiple switches, 
+		if switches.nSwitches>1
+			# Repeat the concentration specifications 
+			switches.connectionInstance.cIn_c = repeat_pattern(switches.connectionInstance.cIn_c, switches.switchSetup, switches.nSwitches)
+			switches.connectionInstance.cIn_l = repeat_pattern(switches.connectionInstance.cIn_l, switches.switchSetup, switches.nSwitches)
+			switches.connectionInstance.cIn_q = repeat_pattern(switches.connectionInstance.cIn_q, switches.switchSetup, switches.nSwitches)
+			switches.connectionInstance.cIn_cube = repeat_pattern(switches.connectionInstance.cIn_cube, switches.switchSetup, switches.nSwitches)
+		end
+		
+		
+		# Fill in initial conditions in solution_outlet matrices
+		for i=1:nColumns
+			for j=1:columns[1].nComp # Storing initial conditions in output matrix
+				columns[i].solution_outlet[1,j] = x0[j*columns[i].ConvDispOpInstance.nPoints + idx_units[i]]
+			end
+			append!(columns[i].solution_times, 0)
+		end
+
+		# Fill in initial conditions in outlets 
+		if outlets != (0,)
+			for i in eachindex(outlets)
+				if outlets[i].idx_outlet != [-1]
+					for j=1:columns[1].nComp # Storing initial conditions in output matrix
+						outlets[i].solution_outlet[1,j] = x0[j*columns[outlets[i].idx_unit[switches.switchSetup[1]]].ConvDispOpInstance.nPoints + outlets[i].idx_outlet[switches.switchSetup[i]]]
+					end
+					append!(outlets[i].solution_times, 0)
+				end
+			end
 		end
 
 		
-		# Output matrix - with initial conditions and time included 
-		output = zeros(Float64,Int64(1+model.switch_time[end]/dt),model.nComp+1)
-		output[:,end] = 0:dt:model.switch_time[end]
-		for j=1:model.nComp # Storing initial conditions in output matrix
-			output[1,j] = x0[j*model.ConvDispOpInstance.nPoints]
-		end
-
-		new{T}(model, c0, cp0, q0, x0, abstol, reltol, dt, output, prototypeJacobian, analyticalJacobian)
+		new(x0, abstol, reltol, dt, solution_times, prototypeJacobian, analyticalJacobian, idx_units, nColumns)
 	end
 end
 
+function rearrangeSwitchSetup(switches)
+	a = -ones(Int64,length(switches.switchSetup))
 
-
-
-
-# Define the function representing the differential equations for transport and binding
-function problem!(RHS, x, p, t)
-    model::modelBase, bind::bindingBase, RHS_q, i = p
-	
-	# Compute binding term. 
-	# The cpp, qq and rhs_q are set up to ease code reading
-	model.cpp = @view x[1 +  model.adsStride : model.adsStride + model.bindStride*model.nComp]
-	model.qq = @view x[1 +  model.adsStride + model.bindStride*model.nComp : model.adsStride + model.bindStride*model.nComp*2]
-    RHS_q = @view RHS[1 +  model.adsStride + model.bindStride*model.nComp : model.adsStride + model.bindStride*model.nComp*2]
-    computeBinding!(RHS_q, model.cpp, model.qq, bind, model.nComp, model.bindStride, t)
-
-	# Compute transport term
-    computeTransport!(RHS, RHS_q, x, model, t, i)
-
-	nothing
+	#if there is only one switch
+	if switches.nSwitches==1 
+		a[:] .= switches.switchSetup[1]
+	#if there are two switches
+	elseif switches.nSwitches>1 #
+		# The inlet concentrations are following a repetetive pattern 
+		a = repeat_pattern(switches.switchSetup)
+	end
+	return a
 end
-

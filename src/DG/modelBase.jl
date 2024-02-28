@@ -123,12 +123,11 @@ mutable struct LRM <: modelBase
     colLength::Float64
     d_ax::Union{Float64, Vector{Float64}}
     eps_c::Float64
-    u::Float64
-    switch_time::Vector{Float64}
-    cIn_c::Matrix{Float64}
-    cIn_l::Matrix{Float64}
-	cIn_q::Matrix{Float64}
-	cIn_cube::Matrix{Float64}
+	c0::Union{Float64, Vector{Float64}} # defaults to 0
+	cp0::Union{Float64, Vector{Float64}} # if not specified, defaults to c0
+	q0::Union{Float64, Vector{Float64}} # defaults to 0
+	
+    
 	cIn::Float64
 	exactInt::Int64
 
@@ -150,9 +149,14 @@ mutable struct LRM <: modelBase
 	cpp::Vector{Float64}
     RHS_q::Vector{Float64}
     qq::Vector{Float64}
+	RHS::Vector{Float64}
+	solution_outlet::Matrix{Float64}
+	solution_times::Vector{Float64}
+	bind::bindingBase
+	
 
 	# Default variables go in the arguments in the LRM(..)
-	function LRM(; nComp, colLength, d_ax, eps_c, u, switch_time, cIn_c, cIn_l=zeros(nComp,length(switch_time)-1), cIn_q=zeros(nComp,length(switch_time)-1), cIn_cube=zeros(nComp,length(switch_time)-1), polyDeg=4, nCells=8, exactInt=1)
+	function LRM(; nComp, colLength, d_ax, eps_c, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exactInt=1)
 		
 		# Get necessary variables for convection dispersion DG 
 		ConvDispOpInstance = ConvDispOp(polyDeg,nCells,colLength)
@@ -169,6 +173,7 @@ mutable struct LRM <: modelBase
 		cpp = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
 		RHS_q = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
 		qq = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
+		RHS = zeros(Float64, adsStride + 2*nComp*bindStride)
 		cIn = 0.0
 	
 		# if the axial dispersion is specified for a single component, assume they are the same for all components
@@ -176,30 +181,72 @@ mutable struct LRM <: modelBase
 			d_ax = ones(Float64,nComp)*d_ax
 		end
 		
+		# Set initial condition vectors 
+		c0, cp0, q0 = initialConditionSpecification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+		
+		# Solution_outlet as well 
+		solution_outlet = zeros(Float64,1,nComp)
+		solution_times = Float64[]
+
+		# Default binding - assumes linear with zero binding 
+		bind = Linear(
+					ka = zeros(Float64,nComp),
+					kd = zeros(Float64,nComp),
+					is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
+					nBound = zeros(Bool,nComp), # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
+					bindStride = bindStride, # Not necessary for Linear model, only for Langmuir and SMA
+					# nBound =  [1,0,1,1] # Specify non-bound states by a zero, defaults to assume all bound states
+					)
+		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, colLength, d_ax, eps_c, u, switch_time, cIn_c, cIn_l, cIn_q, cIn_cube, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, idx, Fc, Fjac, cpp, RHS_q, qq)
+		new(nComp, colLength, d_ax, eps_c, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, idx, Fc, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times,bind)
 	end
 end
 
 
 # Define a function to compute the transport term for the LRM
-function computeTransport!(RHS, RHS_q, x, m::LRM, t, i) 
+function computeTransport!(RHS, RHS_q, x, m::LRM, t, section, sink, switches, idx_units) 
+	# section = i from call 
+	# sink is the unit i.e., h from previous call
     
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
-
+		
+		# Indices
+		# For the indicies regarding mobile phase, + idx_units[sink] must be added to get the right column 
+		# For the stationary phase, RHS_q is already a slice of the stationary phase of the right column
 		m.idx =  1 + (j-1) * m.ConvDispOpInstance.nPoints : m.ConvDispOpInstance.nPoints + (j-1) * m.ConvDispOpInstance.nPoints
 
-		#Convection Dispersion term
-		m.cIn = m.cIn_c[j, i-1] + m.cIn_l[j,i-1]*t + m.cIn_q[j,i-1]*t^2 + m.cIn_cube[j,i-1]*t^3
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, x, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.u, m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+		# Determining inlet concentration 
+		# inletConcentrations!(m.cIn, switches, j, switch, sink, x, t, idx_units) 
+		m.cIn = ((switches.connectionInstance.cIn_c[section,sink, j] + 
+					switches.connectionInstance.cIn_l[section,sink, j]*t +
+					switches.connectionInstance.cIn_q[section,sink, j]*t^2 +
+					switches.connectionInstance.cIn_cube[section,sink, j]*t^3) * switches.connectionInstance.u_inlet[switches.switchSetup[section], sink] +
+					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / 
+					switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
 
-		@. @views RHS[m.idx] = m.ConvDispOpInstance.Dh - m.Fc * RHS_q[m.idx]
+		# Convection Dispersion term
+		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase #
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+
+		# Mobile phase RHS 
+		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * RHS_q[m.idx]
 	end
 	
     nothing
 end
 
+# A function that determines the inlet concentrations needed for the transport equations 
+# Depends on the inlets specified in the switches
+# function inletConcentrations!(cIn, switches, j, switch, sink, x, t, idx_units)
+    
+	# cIn = ((switches.connectionInstance.cIn_c[switch,sink, j] + 
+			# switches.connectionInstance.cIn_l[switch,sink, j]*t +
+			# switches.connectionInstance.cIn_q[switch,sink, j]*t^2 +
+			# switches.connectionInstance.cIn_cube[switch,sink, j]*t^3) * switches.connectionInstance.u_inlet[switch, sink] +
+			# switches.connectionInstance.u_unit[switch, sink] * switches.connectionInstance.c_connect[switch, sink, j] * x[idx_units[sink] + switches.connectionInstance.idx_connect[switch, sink, j]]) / switches.connectionInstance.u_tot[switch, sink]
+# end
 
 ################################# LUMPED RATE MODEL WITH PORES (LRMP) #################################
 mutable struct LRMP <: modelBase
@@ -209,14 +256,11 @@ mutable struct LRMP <: modelBase
     d_ax::Union{Float64, Vector{Float64}}
     eps_c::Float64
 	eps_p::Float64
-    u::Float64
 	kf::Union{Float64, Vector{Float64}}
 	Rp::Float64
-    switch_time::Vector{Float64}
-    cIn_c::Matrix{Float64}
-    cIn_l::Matrix{Float64}
-	cIn_q::Matrix{Float64}
-	cIn_cube::Matrix{Float64}
+	c0::Union{Float64, Vector{Float64}} # defaults to 0
+	cp0::Union{Float64, Vector{Float64}} # if not specified, defaults to c0
+	q0::Union{Float64, Vector{Float64}} # defaults to 0
 	cIn::Float64
 	exactInt::Int64
 
@@ -241,9 +285,13 @@ mutable struct LRMP <: modelBase
 	cpp::Vector{Float64}
     RHS_q::Vector{Float64}
     qq::Vector{Float64}
+	RHS::Vector{Float64}
+	solution_outlet::Matrix{Float64}
+	solution_times::Vector{Float64}
+	bind::bindingBase
 
 	# Default variables go in the arguments in the LRM(..)
-	function LRMP(; nComp, colLength, d_ax, eps_c, eps_p, u, kf, Rp, switch_time, cIn_c, cIn_l=zeros(nComp,length(switch_time)-1), cIn_q=zeros(nComp,length(switch_time)-1), cIn_cube=zeros(nComp,length(switch_time)-1), polyDeg=4, nCells=8, exactInt=1)
+	function LRMP(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exactInt=1)
 		
 		# Get necessary variables for convection dispersion DG 
 		ConvDispOpInstance = ConvDispOp(polyDeg,nCells,colLength)
@@ -261,6 +309,7 @@ mutable struct LRMP <: modelBase
 		Fjac = Fp 				# The phase ratio used for Jacobian i.e., dcdc = Fjac * dqdc
 		cpp = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
 		RHS_q = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
+		RHS = zeros(Float64, adsStride + 2*nComp*bindStride)
 		qq = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
 		cIn = 0.0
 	
@@ -273,32 +322,61 @@ mutable struct LRMP <: modelBase
 		if typeof(kf) == Float64 
 			kf = ones(Float64,nComp)*kf
 		end
+		
+		# Set initial condition vectors 
+		c0, cp0, q0 = initialConditionSpecification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+		
+		# Solution_outlet as well 
+		solution_outlet = zeros(Float64,1,nComp)
+		solution_times = Float64[]
+
+		# Default binding - assumes linear with zero binding 
+		bind = Linear(
+					ka = zeros(Float64,nComp),
+					kd = zeros(Float64,nComp),
+					is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
+					nBound = zeros(Bool,nComp), # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
+					bindStride = bindStride, # Not necessary for Linear model, only for Langmuir and SMA
+					# nBound =  [1,0,1,1] # Specify non-bound states by a zero, defaults to assume all bound states
+					)
 
 		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, colLength, d_ax, eps_c, eps_p, u, kf, Rp, switch_time, cIn_c, cIn_l, cIn_q, cIn_cube, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq)
+		new(nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
 	end
 end
 
 # Define a function to compute the transport term for the LRMP
-function computeTransport!(RHS, RHS_q, x, m::LRMP, t, i)
+function computeTransport!(RHS, RHS_q, x, m::LRMP, t, section, sink, switches, idx_units)
 	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
 
-		#Indices
+		# Indices
+		# For the indicies regarding mobile phase and pore phase, + idx_units[sink] must be added to get the right column 
+		# For the stationary phase, RHS_q is already a slice of the stationary phase of the right column
 		m.idx =  1 + (j-1) * m.ConvDispOpInstance.nPoints : m.ConvDispOpInstance.nPoints + (j-1) * m.ConvDispOpInstance.nPoints
 		m.idx_p = m.idx .+ m.ConvDispOpInstance.nPoints*m.nComp
 
-		# Convection Dispersion term
-		m.cIn = m.cIn_c[j, i-1] + m.cIn_l[j,i-1]*t + m.cIn_q[j,i-1]*t^2 + m.cIn_cube[j,i-1]*t^3
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, x, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.u, m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+		
+		# Determining inlet concentration 
+		# inletConcentrations!(m.cIn, switches, j, switch, sink, x, t, idx_units) 
+		m.cIn = ((switches.connectionInstance.cIn_c[section,sink, j] + 
+					switches.connectionInstance.cIn_l[section,sink, j]*t +
+					switches.connectionInstance.cIn_q[section,sink, j]*t^2 +
+					switches.connectionInstance.cIn_cube[section,sink, j]*t^3) * switches.connectionInstance.u_inlet[switches.switchSetup[section], sink] +
+					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
+		
+		# Convection Dispersion term	
+		# m.cpp = @view x[m.idx .+ idx_units[sink]] # mobile phase
+		m.cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase		
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 		# Mobile phase
-		@. @views RHS[m.idx] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx] - x[m.idx_p])
+		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
 
 		# Pore phase dcp/dt = MT/eps_p - Fp dq/dt
-		@. @views RHS[m.idx_p] = 3 / m.Rp / m.eps_p * m.kf[j] * (x[m.idx] - x[m.idx_p]) - m.Fp * RHS_q[m.idx] 
+		@. @views RHS[m.idx_p .+ idx_units[sink]] = 3 / m.Rp / m.eps_p * m.kf[j] * (x[m.idx .+ idx_units[sink]]- x[m.idx_p .+ idx_units[sink]]) - m.Fp * RHS_q[m.idx] 
 
 	end
 	
@@ -316,16 +394,13 @@ mutable struct GRM <: modelBase
 
     eps_c::Float64
 	eps_p::Float64
-    u::Float64
 	kf::Union{Float64, Vector{Float64}}
 	Rp::Float64
 	Rc::Float64
 	Dp::Union{Float64, Vector{Float64}}
-    switch_time::Vector{Float64}
-    cIn_c::Matrix{Float64}
-    cIn_l::Matrix{Float64}
-	cIn_q::Matrix{Float64}
-	cIn_cube::Matrix{Float64}
+	c0::Union{Float64, Vector{Float64}} # defaults to 0
+	cp0::Union{Float64, Vector{Float64}} # if not specified, defaults to c0
+	q0::Union{Float64, Vector{Float64}} # defaults to 0
 	cIn::Float64
 	exactInt::Int64
 
@@ -357,9 +432,12 @@ mutable struct GRM <: modelBase
 	cpp::Vector{Float64}
     RHS_q::Vector{Float64}
     qq::Vector{Float64}
+	solution_outlet::Matrix{Float64}
+	solution_times::Vector{Float64}
+	bind::bindingBase
 
 	# Default variables go in the arguments in the LRM(..)
-	function GRM(; nComp, colLength, d_ax, eps_c, eps_p, u, kf, Rp, Dp, Rc=0.0, switch_time, cIn_c, cIn_l=zeros(nComp,length(switch_time)-1), cIn_q=zeros(nComp,length(switch_time)-1), cIn_cube=zeros(nComp,length(switch_time)-1), polyDeg=4, polyDegPore=4, nCells=8, exactInt=1)
+	function GRM(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Dp, Rc=0.0, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, polyDegPore=4, nCells=8, exactInt=1)
 		
 		# Get necessary variables for convection dispersion DG 
 		ConvDispOpInstance = ConvDispOp(polyDeg,nCells,colLength)
@@ -410,38 +488,64 @@ mutable struct GRM <: modelBase
 		cpp = zeros(Float64, PoreOpInstance.stridePore)
 		RHS_q = zeros(Float64, PoreOpInstance.stridePore)
 		qq = zeros(Float64, PoreOpInstance.stridePore)
+
+		# Solution_outlet as well 
+		solution_outlet = zeros(Float64,1,nComp)
+		solution_times = Float64[]
+		
+		# Set initial condition vectors 
+		c0, cp0, q0 = initialConditionSpecification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+		
+		# Default binding - assumes linear with zero binding 
+		bind = Linear(
+					ka = zeros(Float64,nComp),
+					kd = zeros(Float64,nComp),
+					is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
+					nBound = zeros(Bool,nComp), # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
+					bindStride = bindStride, # Not necessary for Linear model, only for Langmuir and SMA
+					# nBound =  [1,0,1,1] # Specify non-bound states by a zero, defaults to assume all bound states
+					)
 		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, colLength, d_ax, eps_c, eps_p, u, kf, Rp, Rc, Dp, switch_time, cIn_c, cIn_l, cIn_q, cIn_cube, cIn, exactInt, polyDeg, nCells, polyDegPore, ConvDispOpInstance, PoreOpInstance, bindStride, adsStride, idx, idx_p, idx_q, Fc, Fp, Fjac, Jr, invRi, cpp, RHS_q, qq)
+		new(nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Rc, Dp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, polyDegPore, ConvDispOpInstance, PoreOpInstance, bindStride, adsStride, idx, idx_p, idx_q, Fc, Fp, Fjac, Jr, invRi, cpp, RHS_q, qq, solution_outlet, solution_times, bind)
 	end
 end
 
 
 
 # Define a function to compute the transport term for the LRMP
-function computeTransport!(RHS, RHS_q, x, m::GRM, t, i)
+function computeTransport!(RHS, RHS_q, x, m::GRM, t, section, sink, switches, idx_units)
 	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
 
 		#Indices
 		m.idx =  1 + (j-1) * m.ConvDispOpInstance.nPoints : m.ConvDispOpInstance.nPoints + (j-1) * m.ConvDispOpInstance.nPoints
+		
+		# Determining inlet concentration 
+		# inletConcentrations!(m.cIn, switches, j, switch, sink, x, t, idx_units) 
+		m.cIn = ((switches.connectionInstance.cIn_c[section,sink, j] + 
+					switches.connectionInstance.cIn_l[section,sink, j]*t +
+					switches.connectionInstance.cIn_q[section,sink, j]*t^2 +
+					switches.connectionInstance.cIn_cube[section,sink, j]*t^3) * switches.connectionInstance.u_inlet[switches.switchSetup[section], sink] +
+					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
+		
+		# Convection Dispersion term	
+		m.cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
-		# Convection Dispersion term
-		m.cIn = m.cIn_c[j, i-1] + m.cIn_l[j,i-1]*t + m.cIn_q[j,i-1]*t^2 + m.cIn_cube[j,i-1]*t^3
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, x, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.u, m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 		#Surface flux to the particles 
 		# idx_p is a step range 
 		m.idx_p = m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.nNodesPore : m.PoreOpInstance.nNodesPore : m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints
 
 		# Mobile phase
-		@. @views RHS[m.idx] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx] - x[m.idx_p])
+		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
 
 		#Pore phase - Each idx has _nPolyPore number of states Adding the boundary flux
 		#dcp/dt = 2/Rp Dp Dr/ri cp - (2/Rp)^2 Dp M^-1 A cp + 2/Rp Dp L[0,J/eps/Dp]  - Fp dq/dt
 		#First the 2/Rp Dp L[0,J/eps/Dp] is added
-		@. @views m.PoreOpInstance.boundaryPore =  m.Jr * m.kf[j] / m.eps_p * (x[m.idx] - x[m.idx_p])
+		@. @views m.PoreOpInstance.boundaryPore =  m.Jr * m.kf[j] / m.eps_p * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
 
 
 		#Now the rest is computed
@@ -461,7 +565,7 @@ function computeTransport!(RHS, RHS_q, x, m::GRM, t, i)
 			# 1/r(xi) dc/dxi 2/Rp = 2/Rp d^2/dr^2 for r-> 0
 			#term1 = 1/ri*2 * Jr * Dp * D*c
 
-			mul!(m.PoreOpInstance.term1, m.PoreOpInstance.polyDerMPore2Jr,@view(x[m.idx])) #term = 2 * Jr * D*c
+			mul!(m.PoreOpInstance.term1, m.PoreOpInstance.polyDerMPore2Jr,@view(x[m.idx .+ idx_units[sink]])) #term = 2 * Jr * D*c
 			broadcast!(*,m.PoreOpInstance.term1, m.Dp[j] ,m.PoreOpInstance.term1) #term1 = 2 * Jr * Dp * D*c
 			mul!(m.PoreOpInstance.term11, m.PoreOpInstance.polyDerMPoreRed,m.PoreOpInstance.term1) #term 11 = 2 * Jr^2 * Dp * D*D*c
 			broadcast!(*,m.PoreOpInstance.term1,m.invRi,m.PoreOpInstance.term1) #term1 = 1/ri*2 * Jr * Dp * D*c
@@ -469,14 +573,14 @@ function computeTransport!(RHS, RHS_q, x, m::GRM, t, i)
 
 			#Pore phase boundary conditions 
 			#Corresponds to the boundary term - 2/Rp Dp L[0,J/eps/Dp]
-			@. @views RHS[m.idx] = m.PoreOpInstance.boundaryPore[i] * m.PoreOpInstance.LiftMatrixRed 
+			@. @views RHS[m.idx .+ idx_units[sink]] = m.PoreOpInstance.boundaryPore[i] * m.PoreOpInstance.LiftMatrixRed 
 
 			#Term 2 - Jr^2 .* Dp .* M^-1 A c
-			mul!(m.PoreOpInstance.term2, m.PoreOpInstance.invMMPoreAMatrix,@view(x[m.idx]))
+			mul!(m.PoreOpInstance.term2, m.PoreOpInstance.invMMPoreAMatrix,@view(x[m.idx .+ idx_units[sink]]))
 			broadcast!(*,m.PoreOpInstance.term2,m.Dp[j],m.PoreOpInstance.term2)
 
 			#Assembling RHS
-			@. @views RHS[m.idx] += m.PoreOpInstance.term1 - m.PoreOpInstance.term2 - m.Fp * RHS[m.idx_q]
+			@. @views RHS[m.idx .+ idx_units[sink]] += m.PoreOpInstance.term1 - m.PoreOpInstance.term2 - m.Fp * RHS[m.idx_q]
 
 		end
 
