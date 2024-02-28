@@ -141,16 +141,16 @@ mutable struct connection
 			switches.connectionInstance.cIn_cube[:, sink, :] = source.cIn_cube[:,:]
 
 		else
-			# Need something to fill out values in between two section times and 1 switch
+			# In between two section times and 1 switch, it will assume previous switch and repeat that. 
+			# This is how it is in CADET-Core - see switchTest.py that tests this. 
 			# For example, if switch is constant throughout two section times, this should only be specified once. 
-			for i in size(switches.connectionInstance.cIn_c)[2]
-				switches.connectionInstance.cIn_c[section+1:end, i, :] .= 0.0
-				switches.connectionInstance.cIn_l[section+1:end, i, :] .= 0.0
-				switches.connectionInstance.cIn_q[section+1:end, i, :] .= 0.0
-				switches.connectionInstance.cIn_cube[section+1:end, i, :] .= 0.0
-			end
+			# In this case, what happens if you specify 2 switches in a 5 section. Switch 2 begins at section 2. 
+			# Hence [switch1, ?, switch2, ?, ?]
+			# The result is that it assumes swicht1 for whole period i.e., [switch1, switch1, switch1, switch1, switch1] 
+			# If [switch1, switch2, ?, ?, ?] is specified, 
+			# the result is [switch1, switch2, switch1, switch2, switch1]
 
-			# Set inlet concentration 
+			# # Set inlet concentration 
 			switches.connectionInstance.cIn_c[section, sink, :] = source.cIn_c[section, :]
 			switches.connectionInstance.cIn_l[section, sink, :] = source.cIn_l[section, :]
 			switches.connectionInstance.cIn_q[section, sink, :] = source.cIn_q[section, :]
