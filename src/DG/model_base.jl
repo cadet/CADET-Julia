@@ -111,12 +111,12 @@ end
 
 
 ################################# TRANSPORT MODELS #################################
-abstract type modelBase 
+abstract type ModelBase 
 	# From here, the transport models are found
 end
 
 ################################# LUMPED RATE MODEL (LRM) #################################
-mutable struct LRM <: modelBase
+mutable struct LRM <: ModelBase
 	# Check parameters
 	# These parameters are the minimum to be specified for the LRM
 	nComp::Int64 
@@ -182,7 +182,7 @@ mutable struct LRM <: modelBase
 		end
 		
 		# Set initial condition vectors 
-		c0, cp0, q0 = initialConditionSpecification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+		c0, cp0, q0 = initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
 		
 		# Solution_outlet as well 
 		solution_outlet = zeros(Float64,1,nComp)
@@ -205,7 +205,7 @@ end
 
 
 # Define a function to compute the transport term for the LRM
-function computeTransport!(RHS, RHS_q, x, m::LRM, t, section, sink, switches, idx_units) 
+function compute_transport!(RHS, RHS_q, x, m::LRM, t, section, sink, switches, idx_units) 
 	# section = i from call 
 	# sink is the unit i.e., h from previous call
     
@@ -219,16 +219,16 @@ function computeTransport!(RHS, RHS_q, x, m::LRM, t, section, sink, switches, id
 
 		# Determining inlet concentration 
 		# inletConcentrations!(m.cIn, switches, j, switch, sink, x, t, idx_units) 
-		m.cIn = ((switches.connectionInstance.cIn_c[section,sink, j] + 
-					switches.connectionInstance.cIn_l[section,sink, j]*t +
-					switches.connectionInstance.cIn_q[section,sink, j]*t^2 +
-					switches.connectionInstance.cIn_cube[section,sink, j]*t^3) * switches.connectionInstance.u_inlet[switches.switchSetup[section], sink] +
-					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / 
-					switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
+		m.cIn = ((switches.ConnectionInstance.cIn_c[section,sink, j] + 
+					switches.ConnectionInstance.cIn_l[section,sink, j]*t +
+					switches.ConnectionInstance.cIn_q[section,sink, j]*t^2 +
+					switches.ConnectionInstance.cIn_cube[section,sink, j]*t^3) * switches.ConnectionInstance.u_inlet[switches.switchSetup[section], sink] +
+					switches.ConnectionInstance.u_unit[switches.switchSetup[section], sink] * switches.ConnectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.ConnectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / 
+					switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink]
 
 		# Convection Dispersion term
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase #
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 		# Mobile phase RHS 
 		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * RHS_q[m.idx]
@@ -241,15 +241,15 @@ end
 # Depends on the inlets specified in the switches
 # function inletConcentrations!(cIn, switches, j, switch, sink, x, t, idx_units)
     
-	# cIn = ((switches.connectionInstance.cIn_c[switch,sink, j] + 
-			# switches.connectionInstance.cIn_l[switch,sink, j]*t +
-			# switches.connectionInstance.cIn_q[switch,sink, j]*t^2 +
-			# switches.connectionInstance.cIn_cube[switch,sink, j]*t^3) * switches.connectionInstance.u_inlet[switch, sink] +
-			# switches.connectionInstance.u_unit[switch, sink] * switches.connectionInstance.c_connect[switch, sink, j] * x[idx_units[sink] + switches.connectionInstance.idx_connect[switch, sink, j]]) / switches.connectionInstance.u_tot[switch, sink]
+	# cIn = ((switches.ConnectionInstance.cIn_c[switch,sink, j] + 
+			# switches.ConnectionInstance.cIn_l[switch,sink, j]*t +
+			# switches.ConnectionInstance.cIn_q[switch,sink, j]*t^2 +
+			# switches.ConnectionInstance.cIn_cube[switch,sink, j]*t^3) * switches.ConnectionInstance.u_inlet[switch, sink] +
+			# switches.ConnectionInstance.u_unit[switch, sink] * switches.ConnectionInstance.c_connect[switch, sink, j] * x[idx_units[sink] + switches.ConnectionInstance.idx_connect[switch, sink, j]]) / switches.ConnectionInstance.u_tot[switch, sink]
 # end
 
 ################################# LUMPED RATE MODEL WITH PORES (LRMP) #################################
-mutable struct LRMP <: modelBase
+mutable struct LRMP <: ModelBase
 	# These parameters are the minimum to be specified for the LRMP
 	nComp::Int64 
     colLength::Float64
@@ -324,7 +324,7 @@ mutable struct LRMP <: modelBase
 		end
 		
 		# Set initial condition vectors 
-		c0, cp0, q0 = initialConditionSpecification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+		c0, cp0, q0 = initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
 		
 		# Solution_outlet as well 
 		solution_outlet = zeros(Float64,1,nComp)
@@ -347,7 +347,7 @@ mutable struct LRMP <: modelBase
 end
 
 # Define a function to compute the transport term for the LRMP
-function computeTransport!(RHS, RHS_q, x, m::LRMP, t, section, sink, switches, idx_units)
+function compute_transport!(RHS, RHS_q, x, m::LRMP, t, section, sink, switches, idx_units)
 	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
@@ -361,16 +361,16 @@ function computeTransport!(RHS, RHS_q, x, m::LRMP, t, section, sink, switches, i
 		
 		# Determining inlet concentration 
 		# inletConcentrations!(m.cIn, switches, j, switch, sink, x, t, idx_units) 
-		m.cIn = ((switches.connectionInstance.cIn_c[section,sink, j] + 
-					switches.connectionInstance.cIn_l[section,sink, j]*t +
-					switches.connectionInstance.cIn_q[section,sink, j]*t^2 +
-					switches.connectionInstance.cIn_cube[section,sink, j]*t^3) * switches.connectionInstance.u_inlet[switches.switchSetup[section], sink] +
-					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
+		m.cIn = ((switches.ConnectionInstance.cIn_c[section,sink, j] + 
+					switches.ConnectionInstance.cIn_l[section,sink, j]*t +
+					switches.ConnectionInstance.cIn_q[section,sink, j]*t^2 +
+					switches.ConnectionInstance.cIn_cube[section,sink, j]*t^3) * switches.ConnectionInstance.u_inlet[switches.switchSetup[section], sink] +
+					switches.ConnectionInstance.u_unit[switches.switchSetup[section], sink] * switches.ConnectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.ConnectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink]
 		
 		# Convection Dispersion term	
 		# m.cpp = @view x[m.idx .+ idx_units[sink]] # mobile phase
 		m.cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase		
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 		# Mobile phase
 		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
@@ -386,7 +386,7 @@ end
 
 ################################# GENERAL RATE MODEL (GRM) #################################
 
-mutable struct GRM <: modelBase
+mutable struct GRM <: ModelBase
 	# These parameters are the minimum to be specified for the LRMP
 	nComp::Int64 
     colLength::Float64
@@ -494,7 +494,7 @@ mutable struct GRM <: modelBase
 		solution_times = Float64[]
 		
 		# Set initial condition vectors 
-		c0, cp0, q0 = initialConditionSpecification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+		c0, cp0, q0 = initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
 		
 		# Default binding - assumes linear with zero binding 
 		bind = Linear(
@@ -514,7 +514,7 @@ end
 
 
 # Define a function to compute the transport term for the LRMP
-function computeTransport!(RHS, RHS_q, x, m::GRM, t, section, sink, switches, idx_units)
+function compute_transport!(RHS, RHS_q, x, m::GRM, t, section, sink, switches, idx_units)
 	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
@@ -524,15 +524,15 @@ function computeTransport!(RHS, RHS_q, x, m::GRM, t, section, sink, switches, id
 		
 		# Determining inlet concentration 
 		# inletConcentrations!(m.cIn, switches, j, switch, sink, x, t, idx_units) 
-		m.cIn = ((switches.connectionInstance.cIn_c[section,sink, j] + 
-					switches.connectionInstance.cIn_l[section,sink, j]*t +
-					switches.connectionInstance.cIn_q[section,sink, j]*t^2 +
-					switches.connectionInstance.cIn_cube[section,sink, j]*t^3) * switches.connectionInstance.u_inlet[switches.switchSetup[section], sink] +
-					switches.connectionInstance.u_unit[switches.switchSetup[section], sink] * switches.connectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.connectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.connectionInstance.u_tot[switches.switchSetup[section], sink]
+		m.cIn = ((switches.ConnectionInstance.cIn_c[section,sink, j] + 
+					switches.ConnectionInstance.cIn_l[section,sink, j]*t +
+					switches.ConnectionInstance.cIn_q[section,sink, j]*t^2 +
+					switches.ConnectionInstance.cIn_cube[section,sink, j]*t^3) * switches.ConnectionInstance.u_inlet[switches.switchSetup[section], sink] +
+					switches.ConnectionInstance.u_unit[switches.switchSetup[section], sink] * switches.ConnectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.ConnectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink]
 		
 		# Convection Dispersion term	
 		m.cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.connectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, m.cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn, m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 
 		#Surface flux to the particles 

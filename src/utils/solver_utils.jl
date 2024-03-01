@@ -2,7 +2,7 @@
 
 
 
-mutable struct solverCache
+mutable struct SolverCache
 	# Here, initial conditions and solver options are specified. 
 
 	# Initial conditions: can be a vector of all x0, could be a single x0 or could be different x0 for every component
@@ -24,15 +24,15 @@ mutable struct solverCache
 	nColumns::Int64
 	# the ODE solver cannot be stored because when changing the solver, the datatype is also changed..
 
-	function solverCache(; columns::Union{Tuple,modelBase}, switches::Switches, outlets::Union{Tuple,createOutlet} = (0,), x0 = [0], abstol=1e-12, reltol=1e-10, dt=1.0, solution_times=[0], prototypeJacobian=true, analyticalJacobian=false)
+	function SolverCache(; columns::Union{Tuple,ModelBase}, switches::Switches, outlets::Union{Tuple,CreateOutlet} = (0,), x0 = [0], abstol=1e-12, reltol=1e-10, dt=1.0, solution_times=[0], prototypeJacobian=true, analyticalJacobian=false)
 
 		# To have outlets as a tuple
-		if typeof(columns)<:modelBase
+		if typeof(columns)<:ModelBase
 			columns = (columns,)
 		end
 
 		# To have outlets as a tuple
-		if typeof(outlets)==createOutlet
+		if typeof(outlets)==CreateOutlet
 			outlets = (outlets,)
 		end
 
@@ -100,15 +100,15 @@ mutable struct solverCache
 		# it checks if u_tot = -1 (default value), then that will be the last specified switch and the remaining will be repeated. 
 		# Fill in elements in between the non-filled values of the switchSetup 
 		# This means replace the -1 
-		switches.switchSetup = rearrangeSwitchSetup(switches)
+		switches.switchSetup = rearrange_switch_setup(switches)
 		
 		# If having multiple switches, 
 		if switches.nSwitches>1
 			# Repeat the concentration specifications 
-			switches.connectionInstance.cIn_c = repeat_pattern(switches.connectionInstance.cIn_c, switches.switchSetup, switches.nSwitches)
-			switches.connectionInstance.cIn_l = repeat_pattern(switches.connectionInstance.cIn_l, switches.switchSetup, switches.nSwitches)
-			switches.connectionInstance.cIn_q = repeat_pattern(switches.connectionInstance.cIn_q, switches.switchSetup, switches.nSwitches)
-			switches.connectionInstance.cIn_cube = repeat_pattern(switches.connectionInstance.cIn_cube, switches.switchSetup, switches.nSwitches)
+			switches.ConnectionInstance.cIn_c = repeat_pattern(switches.ConnectionInstance.cIn_c, switches.switchSetup, switches.nSwitches)
+			switches.ConnectionInstance.cIn_l = repeat_pattern(switches.ConnectionInstance.cIn_l, switches.switchSetup, switches.nSwitches)
+			switches.ConnectionInstance.cIn_q = repeat_pattern(switches.ConnectionInstance.cIn_q, switches.switchSetup, switches.nSwitches)
+			switches.ConnectionInstance.cIn_cube = repeat_pattern(switches.ConnectionInstance.cIn_cube, switches.switchSetup, switches.nSwitches)
 		end
 		
 		
@@ -137,7 +137,7 @@ mutable struct solverCache
 	end
 end
 
-function rearrangeSwitchSetup(switches)
+function rearrange_switch_setup(switches)
 	a = -ones(Int64,length(switches.switchSetup))
 
 	#if there is only one switch

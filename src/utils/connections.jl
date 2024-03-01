@@ -1,6 +1,6 @@
 
 
-mutable struct createInlet 
+mutable struct CreateInlet 
 	# A struct for creating an inlet 
 	# An inlet here is specified as inlet at each section time
 	# All the inlet coefficients are zero by default 
@@ -10,7 +10,7 @@ mutable struct createInlet
 	cIn_cube::Matrix{Float64}
 	
 	# Default generate an inlet 
-	function createInlet(; nComp::Int64, nSections::Int64)
+	function CreateInlet(; nComp::Int64, nSections::Int64)
 
 		# Instantiate the inlets 
 		cIn_c = -ones(Float64, nSections, nComp)
@@ -30,7 +30,7 @@ mutable struct createInlet
 end
 
 # Modify inlet 
-function modifyInlet!(; inlet::createInlet, nComp::Int64, section, cIn_c = [0.0], cIn_l=[0.0], cIn_q=[0.0], cIn_cube=[0.0])
+function modify_inlet!(; inlet::CreateInlet, nComp::Int64, section, cIn_c = [0.0], cIn_l=[0.0], cIn_q=[0.0], cIn_cube=[0.0])
 	if size(cIn_c)[1] == nComp
 		inlet.cIn_c[section,:] = cIn_c 
 	elseif cIn_c == [0.0]
@@ -87,7 +87,7 @@ function repeat_elements(matrix::Matrix, idx::Int)
 end
 
 
-mutable struct createOutlet 
+mutable struct CreateOutlet 
 	# A struct for creating an outlet 
 	# An outlet is specified as a container that holds specific outputs
 	solution_outlet::Matrix{Float64}
@@ -95,7 +95,7 @@ mutable struct createOutlet
 	idx_unit::Vector{Int64}
 	idx_outlet::Vector{Int64}
 
-	function createOutlet(;nComp::Int64)
+	function CreateOutlet(;nComp::Int64)
 		solution_outlet = zeros(Float64,0,nComp)
 		solution_times = Float64[]
 		idx_unit = [-1]
@@ -104,7 +104,7 @@ mutable struct createOutlet
 	end 
 end 
 
-mutable struct connection	
+mutable struct Connection	
 
 	u_unit::Matrix{Float64} # Inlet comming from another unit
 	u_inlet::Matrix{Float64} # Inlet comming an inlet
@@ -122,23 +122,23 @@ mutable struct connection
 	# For these cosntructors, we cannot use keyword arguments when having multiple constructors 
 	
 	# If an inlet is specified as input
-	function connection(switches, switch::Int64, section::Int64, source::createInlet, sink::Int64, u::Float64)
+	function Connection(switches, switch::Int64, section::Int64, source::CreateInlet, sink::Int64, u::Float64)
 		# Here input is the inlet concentration 
 
 		# The switchSetup is set to a section 
 		switches.switchSetup[section] = switch
 		
 		# The inlet flux is and u_tot are modified 
-		switches.connectionInstance.u_inlet[switch, sink] = u
-		switches.connectionInstance.u_tot[switch, sink] = switches.connectionInstance.u_inlet[switch, sink] + switches.connectionInstance.u_unit[switch, sink]
+		switches.ConnectionInstance.u_inlet[switch, sink] = u
+		switches.ConnectionInstance.u_tot[switch, sink] = switches.ConnectionInstance.u_inlet[switch, sink] + switches.ConnectionInstance.u_unit[switch, sink]
 
 		# The section specifications from the inlet should be copied 
-		# switches.connectionInstance.cIn[section, sink, comp]
+		# switches.ConnectionInstance.cIn[section, sink, comp]
 		if switches.nSwitches<2
-			switches.connectionInstance.cIn_c[:, sink, :] = source.cIn_c[:,:]
-			switches.connectionInstance.cIn_l[:, sink, :] = source.cIn_l[:,:]
-			switches.connectionInstance.cIn_q[:, sink, :] = source.cIn_q[:,:]
-			switches.connectionInstance.cIn_cube[:, sink, :] = source.cIn_cube[:,:]
+			switches.ConnectionInstance.cIn_c[:, sink, :] = source.cIn_c[:,:]
+			switches.ConnectionInstance.cIn_l[:, sink, :] = source.cIn_l[:,:]
+			switches.ConnectionInstance.cIn_q[:, sink, :] = source.cIn_q[:,:]
+			switches.ConnectionInstance.cIn_cube[:, sink, :] = source.cIn_cube[:,:]
 
 		else
 			# In between two section times and 1 switch, it will assume previous switch and repeat that. 
@@ -151,15 +151,15 @@ mutable struct connection
 			# the result is [switch1, switch2, switch1, switch2, switch1]
 
 			# # Set inlet concentration 
-			switches.connectionInstance.cIn_c[section, sink, :] = source.cIn_c[section, :]
-			switches.connectionInstance.cIn_l[section, sink, :] = source.cIn_l[section, :]
-			switches.connectionInstance.cIn_q[section, sink, :] = source.cIn_q[section, :]
-			switches.connectionInstance.cIn_cube[section, sink, :] = source.cIn_cube[section, :]
+			switches.ConnectionInstance.cIn_c[section, sink, :] = source.cIn_c[section, :]
+			switches.ConnectionInstance.cIn_l[section, sink, :] = source.cIn_l[section, :]
+			switches.ConnectionInstance.cIn_q[section, sink, :] = source.cIn_q[section, :]
+			switches.ConnectionInstance.cIn_cube[section, sink, :] = source.cIn_cube[section, :]
 		end
 	end
 	
 	# If a column is specified as input i.e., in series 
-	function connection(switches, switch::Int64, section::Int64, source::Tuple{Int64,modelBase}, sink::Int64, u::Float64)
+	function Connection(switches, switch::Int64, section::Int64, source::Tuple{Int64,ModelBase}, sink::Int64, u::Float64)
 		# Unpack source 
 		columnNumber = source[1]
 		model = source[2]
@@ -169,18 +169,18 @@ mutable struct connection
 		
 		# Here the matrix should be edited
 		# edit u_total, Q and C_connect 
-		switches.connectionInstance.u_unit[switch, sink] = u
-		switches.connectionInstance.u_tot[switch, sink] = switches.connectionInstance.u_inlet[switch, sink] + switches.connectionInstance.u_unit[switch, sink]
-		switches.connectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
+		switches.ConnectionInstance.u_unit[switch, sink] = u
+		switches.ConnectionInstance.u_tot[switch, sink] = switches.ConnectionInstance.u_inlet[switch, sink] + switches.ConnectionInstance.u_unit[switch, sink]
+		switches.ConnectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
 		for j in 1:model.nComp 
 			# The following line assumes all transport models have the same discretization! 
-			switches.connectionInstance.idx_connect[switch, sink, j] = model.bindStride + (j-1) * model.bindStride  + (columnNumber-1) * (model.adsStride + 2*model.bindStride*model.nComp)
+			switches.ConnectionInstance.idx_connect[switch, sink, j] = model.bindStride + (j-1) * model.bindStride  + (columnNumber-1) * (model.adsStride + 2*model.bindStride*model.nComp)
 		end
 		
 	end
 
 	# Default configuration 
-	function connection(nSections::Int64, nSwitches::Int64, nComp::Int64, nColumns::Int64)
+	function Connection(nSections::Int64, nSwitches::Int64, nComp::Int64, nColumns::Int64)
 		
 		# Here the matrix should be edited
 		u_unit = zeros(Float64, nSwitches, nColumns)
@@ -198,7 +198,7 @@ mutable struct connection
 	
 	
 	# If an outlet is specified as sink
-	function connection(switches, switch::Int64, section::Int64, source::Int64, sink::createOutlet, u::Float64 = 0.0)
+	function Connection(switches, switch::Int64, section::Int64, source::Int64, sink::CreateOutlet, u::Float64 = 0.0)
 		# The switchSetup is set to a section 
 		switches.switchSetup[section] = switch
 
@@ -226,14 +226,14 @@ mutable struct Switches
 	switchSetup::Vector{Int64}
 	
 	
-	connectionInstance::connection 
+	ConnectionInstance::Connection 
 	
 	function Switches(; nSections::Int64, section_times::Vector{Float64}, nSwitches::Int64, nColumns::Int64, nComp::Int64)
 	
 		# Establish default zero configuration
-		connectionInstance = connection(nSections, nSwitches, nComp, nColumns) # connection(nSections = nSections, nComp = nComp, nColumns = nColumns)
+		ConnectionInstance = Connection(nSections, nSwitches, nComp, nColumns) # connection(nSections = nSections, nComp = nComp, nColumns = nColumns)
 		switchSetup = -ones(Int64,nSections)
 	
-		new(nSections, section_times, nSwitches, switchSetup, connectionInstance)
+		new(nSections, section_times, nSwitches, switchSetup, ConnectionInstance)
 	end
 end

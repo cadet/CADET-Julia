@@ -1,6 +1,6 @@
 
 
-function initialConditionSpecification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+function initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
 	# This function returns the initial conditions
 	# Takes c0, cp0 and q0 and returns the initial condition vectors. 
 	# If c0, cp0 and/or q0 are given as floats, the values will be copied to the vector of correct length 
