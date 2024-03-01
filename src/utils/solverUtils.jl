@@ -100,7 +100,7 @@ mutable struct solverCache
 		# it checks if u_tot = -1 (default value), then that will be the last specified switch and the remaining will be repeated. 
 		# Fill in elements in between the non-filled values of the switchSetup 
 		# This means replace the -1 
-		switches.switchSetup = rearrangeSwitchSetup(switches)
+		switches.switchSetup = rearrange_switch_setup(switches)
 		
 		# If having multiple switches, 
 		if switches.nSwitches>1
@@ -137,7 +137,7 @@ mutable struct solverCache
 	end
 end
 
-function rearrangeSwitchSetup(switches)
+function rearrange_switch_setup(switches)
 	a = -ones(Int64,length(switches.switchSetup))
 
 	#if there is only one switch
