@@ -3,30 +3,9 @@
 module ConvDispOperatorDG
     using SpecialFunctions,LinearAlgebra
 
-
-
-    function RHSConvDisp!(RHS, x, p, t)
-        # The output is C = [c11,c12,c13..,c21,c22,c23...cend,q11,q12,q13...qend]
-    
-        _strideNode,_strideCell,_nPoints,_nNodes, _nCells,_deltaZ, _nComp, _polyDeg, _invWeights, _polyDerM,_invMM, u, d_ax, cIn,c_star,h_star,Dc,Dh,_h,mul1,idx,y,_exactInt = p
-        
-    
-        # convDisp = zeros(_nPoints)
-        @inbounds for j = 1:_nComp
-    
-            idx =  1 + (j-1) * _nPoints : _nPoints + (j-1) * _nPoints
-    
-            #ConvDispOperator     
-            residualImpl!(Dh, x,idx, _strideNode,_strideCell,_nPoints,_nNodes, _nCells,_deltaZ, _polyDeg, _invWeights, _polyDerM,_invMM, u, d_ax, cIn,c_star,h_star,Dc,_h,mul1,_exactInt)
-    
-            @. @views RHS[idx] = Dh
-        end
-        nothing
-    end
     
     
-    
-    #residual function as implemented in CADET - Convection Dispersion operator
+    #residual function as implemented in CADET Core - Convection Dispersion operator
     @inline function residualImpl!(Dh, y, idx, _strideNode,_strideCell,_nPoints,_nNodes, _nCells,_deltaZ, _polyDeg, _invWeights, _polyDerM,_invMM, u, d_ax, cIn,c_star,h_star,Dc,_h,mul1,_exactInt = 1) #Convection Dispersion operator
         #convDisp is the convection dispersion term as output
         #t is the time

@@ -18,16 +18,16 @@ using SpecialFunctions,LinearAlgebra
 using IncompleteLU
 
 # Include the Julia functions
-include(joinpath(rel_path,"SRC\\isotherms\\bindingBase.jl"))
-include(joinpath(rel_path,"SRC\\DG\\modelBase.jl"))
+include(joinpath(rel_path,"SRC\\isotherms\\binding_base.jl"))
+include(joinpath(rel_path,"SRC\\DG\\model_base.jl"))
 include(joinpath(rel_path,"SRC\\utils\\connections.jl"))
-include(joinpath(rel_path,"SRC\\utils\\dictionaryReader.jl"))
-include(joinpath(rel_path,"SRC\\utils\\repeatFunctions.jl"))
-include(joinpath(rel_path,"SRC\\utils\\initialConditionSpecification.jl"))
-include(joinpath(rel_path,"SRC\\utils\\solverUtils.jl"))
+include(joinpath(rel_path,"SRC\\utils\\dictionary_reader.jl"))
+include(joinpath(rel_path,"SRC\\utils\\repeat_functions.jl"))
+include(joinpath(rel_path,"SRC\\utils\\initial_condition_specification.jl"))
+include(joinpath(rel_path,"SRC\\utils\\solver_utils.jl"))
 include(joinpath(rel_path,"SRC\\utils\\solver.jl"))
-include(joinpath(rel_path,"SRC\\isotherms\\Jacobians.jl"))
-include(joinpath(rel_path,"SRC\\DG\\ConvDispOperatorDGJac.jl"))
+include(joinpath(rel_path,"SRC\\isotherms\\jacobians.jl"))
+include(joinpath(rel_path,"SRC\\DG\\conv_disp_operator_dg_jac.jl"))
 include(joinpath(rel_path,"SRC\\utils\\evaluate_convergence.jl"))
 include(joinpath(rel_path,"SRC\\utils\\evaluate_ODEsolvers.jl"))
 

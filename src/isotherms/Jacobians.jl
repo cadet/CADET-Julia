@@ -1,7 +1,7 @@
 
 # Finite differences for computing jacobian prototype. 
 # The ODEsolver uses the sparsity pattern to solve the ODEs faster 
-function JacFiniteDiff(F, p, x0, epsilon=1e-8)
+function jac_finite_diff(F, p, x0, epsilon=1e-8)
 	n = length(x0)  # Number of variables in the system
 	jacProto = zeros(n, n)  # Initialize the Jacobian matrix
 
@@ -24,7 +24,7 @@ end
 
 
 # Compute the static jacobian and determine allocation matrices determining the Jacobian 
-function JacStat(model) #
+function jac_static(model) #
 
     # ConvDispJac = zeros(model.nComp * model.bindStride + model.adsStride, model.nComp * model.bindStride + model.adsStride)
     # ConvDispOperatorDGJac.ConvDispJacobian!(ConvDispJac,model.ConvDispOpInstance.nNodes, model.u, model.ConvDispOpInstance.polyDerM, model.ConvDispOpInstance.invMM, model.ConvDispOpInstance.invWeights,model.ConvDispOpInstance.polyDeg, model.ConvDispOpInstance.deltaZ, model.nComp, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.d_ax, model.exactInt)
@@ -43,7 +43,7 @@ end
 
 
 # # Compute the static jacobian and determine allocation matrices determining the Jacobian 
-# function JacStat(model::LRMP)
+# function jac_static(model::LRMP)
 
 #     ConvDispJac = zeros(model.nComp * model.bindStride + model.adsStride, model.nComp * model.bindStride + model.adsStride)
 #     ConvDispOperatorDGJac.ConvDispJacobian_pores!(ConvDispJac,model.ConvDispOpInstance.nNodes, model.u, model.ConvDispOpInstance.polyDerM, model.ConvDispOpInstance.invMM, model.ConvDispOpInstance.invWeights,model.ConvDispOpInstance.polyDeg, model.ConvDispOpInstance.deltaZ, model.nComp, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.d_ax, model.exactInt,model.Fc,model.Rp,model.kf,model.eps_p)
@@ -85,11 +85,11 @@ end
 
 
 
-function analJac!(J, x, p, t)
+function analytical_jac!(J, x, p, t)
     model::modelBase, bind::bindingBase = p
 
     # Compute dynamic part of Jacobian from isotherm
-    computeJacIso!(J,x,model,bind,p,t) # refers to the specific jacobian for binding
+    compute_jac_iso!(J,x,model,bind,p,t) # refers to the specific jacobian for binding
 
     # Assemble Jacobian 
     # computeJacAss!(J,model,p) # This is not necessary needed in a function 

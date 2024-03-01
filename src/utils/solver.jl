@@ -8,24 +8,24 @@
 function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg=QNDF(autodiff=false))
 
 	# To have outlets as a tuple
-	if typeof(columns)<:modelBase
+	if typeof(columns)<:ModelBase
 		columns = (columns,)
 	end
 	
 	# To have outlets as a tuple
-	if typeof(outlets)==createOutlet
+	if typeof(outlets)==CreateOutlet
 		outlets = (outlets,)
 	end
 
 	# If Analytical Jacobian == yes, set analytical Jacobian
 	if solverOptions.analyticalJacobian == true
 		# determine static jacobian and allocation matrices that are stored in p_jac
-		p_jac = JacStat(model)
-		analJac = analJac! #refers to the function
+		p_jac = jac_static(model)
+		analytical_jac = analytical_jac! #refers to the function
 	else
-		# make p_jac and analJac empty such that they are not used
+		# make p_jac and analytical_jac empty such that they are not used
 		p_jac = nothing
-		analJac = nothing
+		analytical_jac = nothing
 	end
 
 	x0 = solverOptions.x0
@@ -37,7 +37,7 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 			# set up a parameter vector 
 			p = (columns, columns[1].RHS_q, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
 			# determine jacobian prototype using finite differences - saves compilation time but perhaps change
-			jacProto = sparse(JacFiniteDiff(problem!,p,solverOptions.x0 .+ 1e-6, 1e-8))
+			jacProto = sparse(jac_finite_diff(problem!,p,solverOptions.x0 .+ 1e-6, 1e-8))
 			
 			# set dq0dq to zero when computing SMA w. formulation 1 as dq/dt is not needed to be computed
 			# This makes it slightly faster
@@ -52,7 +52,7 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 		# update the tspan and the inlets through i to the system
 		tspan = (switches.section_times[i], switches.section_times[i+1])
 		p = (columns, columns[1].RHS_q, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
-		fun = ODEFunction(problem!; jac_prototype = jacProto, jac = analJac)
+		fun = ODEFunction(problem!; jac_prototype = jacProto, jac = analytical_jac)
 		prob = ODEProblem(fun, x0, (0, tspan[2]-tspan[1]), p)
 		sol = solve(prob, alg, saveat=solverOptions.solution_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol) #perhaps replace dt with solution_times
 		
@@ -100,10 +100,10 @@ function problem!(RHS, x, p, t)
 		columns[h].cpp = @view x[1 + columns[h].adsStride + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp + idx_units[h]]
 		columns[h].qq = @view x[1 + columns[h].adsStride + columns[h].bindStride*columns[h].nComp + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp * 2 + idx_units[h]]
 		RHS_q = @view RHS[1 + columns[h].adsStride + columns[h].bindStride * columns[h].nComp + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp * 2 + idx_units[h]]
-		computeBinding!(RHS_q, columns[h].cpp, columns[h].qq, columns[h].bind, columns[h].nComp, columns[h].bindStride, t)
+		compute_binding!(RHS_q, columns[h].cpp, columns[h].qq, columns[h].bind, columns[h].nComp, columns[h].bindStride, t)
 
 		# Compute transport term
-		computeTransport!(RHS, RHS_q, x, columns[h], t, i, h, switches, idx_units)
+		compute_transport!(RHS, RHS_q, x, columns[h], t, i, h, switches, idx_units)
 
 	end
 	nothing

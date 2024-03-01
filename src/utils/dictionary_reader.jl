@@ -16,7 +16,7 @@ function create_units(model::Union{Dict, OrderedDict})
             unit_type = value["unit_type"]
 
             if unit_type == "INLET"
-                inlet_instance = createInlet(
+                inlet_instance = CreateInlet(
                     nComp = value["ncomp"],
 					nSections = model["root"]["input"]["solver"]["sections"]["nsec"])
 					
@@ -55,7 +55,7 @@ function create_units(model::Union{Dict, OrderedDict})
 								cIn_cube = Float64.(value["sec_$(num_iterator)"]["cube_coeff"])
 							end
 
-							modifyInlet!(inlet = inlet_instance,
+							modify_inlet!(inlet = inlet_instance,
 									nComp = value["ncomp"], 
 									section = num_sections, 
 									cIn_c = cIn_c, # Inlet concentration
@@ -72,7 +72,7 @@ function create_units(model::Union{Dict, OrderedDict})
 
 			elseif unit_type == "OUTLET"
                 # Create outlet instance
-                outlet_instance = createOutlet(nComp=value["ncomp"])
+                outlet_instance = CreateOutlet(nComp=value["ncomp"])
                 push!(outlets, outlet_instance)
                 units[unit_name] = outlet_instance
 
@@ -183,7 +183,7 @@ function create_units(model::Union{Dict, OrderedDict})
             sink = units[sinkID]
 
             # Setting velocity 
-            if typeof(sink)<:modelBase # if sink is column 
+            if typeof(sink)<:ModelBase # if sink is column 
                 # if both cross sectional area is given, infer via volumetric flowrate
                 if haskey(model["root"]["input"]["model"][sinkID],"cross_section_area")
                     u = connectionMatrix[j,5]/(model["root"]["input"]["model"][sinkID]["cross_section_area"]*sink.eps_c)
@@ -195,7 +195,7 @@ function create_units(model::Union{Dict, OrderedDict})
                 idx = findfirst(x -> x == sinkID, columnIDs)
                 sink = columnNumber[idx]
                 
-                if typeof(source)<:modelBase
+                if typeof(source)<:ModelBase
                     idx = findfirst(x -> x == sourceID, columnIDs)
                     source = (columnNumber[idx],source)
                 end
@@ -203,7 +203,7 @@ function create_units(model::Union{Dict, OrderedDict})
 
             # if sink is createOutlet, the source must be from a column 
             # Hence we need the right column
-            if typeof(sink) == createOutlet
+            if typeof(sink) == CreateOutlet
                 # if sink is createOutlet, the source must be from a column 
                 # Hence we need the right column 
                 idx = findfirst(x -> x == sourceID, columnIDs)
@@ -215,7 +215,7 @@ function create_units(model::Union{Dict, OrderedDict})
             end
 
             # add connection 
-            connection(
+            Connection(
                         switches, # Switches that must be modified and used in the simulator 
                         i+1, # Switch XX 
                         model["root"]["input"]["model"]["connections"][switchIterator]["section"]+1, #section 
@@ -227,7 +227,7 @@ function create_units(model::Union{Dict, OrderedDict})
     end  
 
     # Solver options 
-    solverOptions = solverCache(
+    solverOptions = SolverCache(
                         columns = Tuple(columns), 
                         switches = switches, 
                         outlets = Tuple(outlets),

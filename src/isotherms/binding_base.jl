@@ -41,7 +41,7 @@ mutable struct Linear <: bindingBase
 end
 
 # Computing the binding of the linear isotherm
-function computeBinding!(RHS_q, cpp, qq, bind::Linear, nComp, bindStride, t)
+function compute_binding!(RHS_q, cpp, qq, bind::Linear, nComp, bindStride, t)
 	fill!(RHS_q,0.0)
 
 	#Loop over components
@@ -55,7 +55,7 @@ end
 
 
 # compute jacobian of isotherm
-function computeJacIso!(J,x,model,bind::Linear,p,t)
+function compute_jac_iso!(J,x,model,bind::Linear,p,t)
     dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac = p[end] # The allocations are stored in last element of p tuple
     
     # These matrix allocations are reset because F*dqdc and F*dcdq is added respectively
@@ -116,7 +116,7 @@ end
 
 
 # Computing the binding of the Langmuir isotherm
-function computeBinding!(RHS_q, cpp, qq, bind::Langmuir, nComp, bindStride, t)
+function compute_binding!(RHS_q, cpp, qq, bind::Langmuir, nComp, bindStride, t)
 	# RHS_q = zeros(mobStride * 4)
 	fill!(RHS_q,0.0)
 	fill!(bind.qsum,0.0)
@@ -141,7 +141,7 @@ end
 
 
 # compute jacobian of isotherm
-function computeJacIso!(J,x,model,bind::Langmuir,p,t)
+function compute_jac_iso!(J,x,model,bind::Langmuir,p,t)
     dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac = p[end] # The allocations are stored in last element of p tuple
     
     # These matrix allocations are reset because F*dqdc and F*dcdq is added respectively
@@ -231,7 +231,7 @@ mutable struct SMA <: bindingBase
 end
 
 # Computing the binding of the SMA isotherm - formulation 1
-function computeBinding!(RHS_q, cpp, qq, bind::SMA, nComp, bindStride, t)
+function compute_binding!(RHS_q, cpp, qq, bind::SMA, nComp, bindStride, t)
 
 	# Reset q0barsum and RHS_q0
 	fill!(bind.q0barSum,0.0)
@@ -256,7 +256,7 @@ end
 
 
 # Computing the binding of the SMA isotherm - formulation 2
-# function computeBinding!(RHS_q, cpp, qq, bind::SMA, nComp, bindStride, t)
+# function compute_binding!(RHS_q, cpp, qq, bind::SMA, nComp, bindStride, t)
 
 # 	# Reset q0barsum 
 # 	fill!(bind.q0barSum,0.0)
@@ -285,7 +285,7 @@ end
 
 
 # compute jacobian of isotherm - formulation 1
-function computeJacIso!(J,x,model,bind::SMA,p,t)
+function compute_jac_iso!(J,x,model,bind::SMA,p,t)
     dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac = p[end] # The allocations are stored in last element of p tuple
     
     # These matrix allocations are reset because F*dqdc and F*dcdq is added respectively
@@ -364,7 +364,7 @@ end
 
 
 # # compute jacobian of isotherm - formulation 2
-# function computeJacIso!(J,x,model,bind::SMA,p,t)
+# function compute_jac_iso!(J,x,model,bind::SMA,p,t)
 #     dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac = p[end] # The allocations are stored in last element of p tuple
     
 #     # These matrix allocations are reset because F*dqdc and F*dcdq is added respectively
