@@ -66,45 +66,54 @@ mutable struct PoreOp
 	# DG properties for the convection dispersion operator
 	stridePore::Int64
 	LiftMatrixRed::Vector{Float64}
-	polyDerMPore2Jr::Matrix{Float64}
-	polyDerMPoreRed::Matrix{Float64}
-	invMMPoreAMatrix::Matrix{Float64}
+	invMM_Ar::Matrix{Float64}
 	nNodesPore::Int64
 	boundaryPore::Vector{Float64}
 	term1::Vector{Float64}
-	term11::Vector{Float64}
-	term2::Vector{Float64}
 
-	function PoreOp(polyDegPore,nPoints,nComp,Jr)
+	function PoreOp(polyDegPore,nPoints,nComp,Rc, Rp, deltaR, eps_p)
 
 		nNodesPore = polyDegPore + 1
 		stridePore = nPoints*nNodesPore*nComp #stride pore phase
 
-		# Obtain LGL nodes, weights and matrices for pore phase
+		# Obtain LGL nodes, weights for pore phase
 		nodesPore,invWeightsPore = DGElements.lglnodes(polyDegPore)              #LGL nodes & weights
-		invMMPore = DGElements.invMMatrix(nodesPore,polyDegPore)                 #Inverse mass matrix, M^-1
-		polyDerMPore = DGElements.derivativeMatrix(polyDegPore,nodesPore)        #derivative matrix, D
 
-		# Obtain matrices for pore phase
-		polyDerMPore2Jr = polyDerMPore * 2 * Jr    								#derivative matrix, D*2*Jr
-		polyDerMPoreRed = Transpose(polyDerMPore[1,1:nNodesPore])*Jr             # The reduced D matrix for when r->0 * Jr
-		AMatrix = Transpose(polyDerMPore) * inv(invMMPore) * polyDerMPore        #A matrix, D^T M D
-		invMMPoreAMatrix = invMMPore * AMatrix*Jr^2                               #M^-1*A which is used in RHS * Jr^2
+		## Matrices for term 1 - volume integral
+		MMatrix = DGElements.MMatrix(nodesPore, polyDegPore, 0, 2) * (deltaR/2)^2
+		MMatrix += DGElements.MMatrix(nodesPore, polyDegPore, 0, 1) * (deltaR) * Rc
+		MMatrix += DGElements.MMatrix(nodesPore, polyDegPore, 0, 0) * Rc^2
+		
+		# M^-1 
+		invMM = inv(MMatrix)
+		secondOrdersteifMatrix = Rc^2 * DGElements.second_order_stiff_matrix(nodesPore,polyDegPore, 0, 0)
+		secondOrdersteifMatrix += Rc * deltaR * DGElements.second_order_stiff_matrix(nodesPore,polyDegPore, 0, 1)
+		secondOrdersteifMatrix += (deltaR/2)^2 * DGElements.second_order_stiff_matrix(nodesPore,polyDegPore, 0, 2)
+
+		# M^-1 * A^r * (2/deltaR)^2
+		invMM_Ar = invMM * secondOrdersteifMatrix .* (2/deltaR)^2
+
+		# # Ir vector 
+		# Ir = zeros(Float64, nNodesPore) #_disc.Ir
+		# for i=1:nNodesPore
+		# 	Ir[i] = (deltaR/2) * (nodesPore[i] + 1) + Rc #
+		# end
+		# Ir = Ir.^2 # For spheres
 
 		# Lifting matrix, L = M^-1 eps
 		LiftMatrix = zeros(nNodesPore,2)
 		LiftMatrix[1,1] = 1
 		LiftMatrix[nNodesPore,2] = 1
-		LiftMatrix = invMMPore*LiftMatrix
-		LiftMatrixRed = LiftMatrix[:,2] #Since only the second column is used according to the boundary conditions
+		LiftMatrix = invMM*LiftMatrix
+		LiftMatrixRed = LiftMatrix[:,2]  #Since only the second column is used according to the boundary conditions
+		LiftMatrixRed *= (2/deltaR) * Rp^2 / eps_p # L (M^-1) (2/deltaR) Rp^2/eps_p
+
 
 		boundaryPore = zeros(Float64,nPoints)
 
 		term1 = zeros(nNodesPore)
-		term11 = zeros( 1)
-		term2 = zeros(nNodesPore)
 
-		new(stridePore, LiftMatrixRed, polyDerMPore2Jr, polyDerMPoreRed, invMMPoreAMatrix, nNodesPore, boundaryPore, term1, term11, term2)
+		new(stridePore, LiftMatrixRed, invMM_Ar, nNodesPore, boundaryPore, term1)
 	end
 end
 
@@ -472,13 +481,14 @@ mutable struct GRM <: ModelBase
 
 		#Inverse Jacobian of the mapping
 		Jr = 2/(Rp-Rc) 
+		deltaR = Rp-Rc
 
 		#Inverse ri
 		invRi = 1 ./ ri
 		invRi[1] = 1.0 #WIll not be used anyway - to avoid inf
 
 		# Get necessary variables for pore phase DG 
-		PoreOpInstance = PoreOp(polyDegPore,ConvDispOpInstance.nPoints,nComp,Jr)
+		PoreOpInstance = PoreOp(polyDegPore, ConvDispOpInstance.nPoints, nComp, Rc, Rp, deltaR, eps_p)
 
 		# The bind stride is the stride between each component for binding. For LRM, it is nPoints=(polyDeg + 1) * nCells
 		bindStride = ConvDispOpInstance.nPoints*PoreOpInstance.nNodesPore
@@ -542,10 +552,10 @@ function compute_transport!(RHS, RHS_q, x, m::GRM, t, section, sink, switches, i
 		# Mobile phase
 		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
 
-		#Pore phase - Each idx has _nPolyPore number of states Adding the boundary flux
-		#dcp/dt = 2/Rp Dp Dr/ri cp - (2/Rp)^2 Dp M^-1 A cp + 2/Rp Dp L[0,J/eps/Dp]  - Fp dq/dt
-		#First the 2/Rp Dp L[0,J/eps/Dp] is added
-		@. @views m.PoreOpInstance.boundaryPore =  m.Jr * m.kf[j] / m.eps_p * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
+		# Pore phase - Each idx has _nPolyPore number of states Adding the boundary flux
+		# The boundary flux term is computed as kf(x-x*) 
+		# The whole term is L (M^-1) (2/deltaR) Rp^2/eps_p * kf (x-x*)
+		@. @views m.PoreOpInstance.boundaryPore =  m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
 
 
 		#Now the rest is computed
@@ -559,28 +569,17 @@ function compute_transport!(RHS, RHS_q, x, m::GRM, t, section, sink, switches, i
 			#Stationary phase starts after all pore phases have been determined
 			m.idx_q = m.nComp*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.stridePore + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + 1 + (i-1) * m.PoreOpInstance.nNodesPore : m.PoreOpInstance.nNodesPore + m.nComp*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.stridePore + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + (i-1) * m.PoreOpInstance.nNodesPore
 
-			#Since the term1 needs special treatment at r->0, it is computed separately
-			#we cannot compute 1/r when r=0 but rewriting using L'Hôpital's rule gives
-			#1/r dc/dr = d^2/dr^2 for r->0
-			# 1/r(xi) dc/dxi 2/Rp = 2/Rp d^2/dr^2 for r-> 0
-			#term1 = 1/ri*2 * Jr * Dp * D*c
-
-			mul!(m.PoreOpInstance.term1, m.PoreOpInstance.polyDerMPore2Jr,@view(x[m.idx .+ idx_units[sink]])) #term = 2 * Jr * D*c
-			broadcast!(*,m.PoreOpInstance.term1, m.Dp[j] ,m.PoreOpInstance.term1) #term1 = 2 * Jr * Dp * D*c
-			mul!(m.PoreOpInstance.term11, m.PoreOpInstance.polyDerMPoreRed,m.PoreOpInstance.term1) #term 11 = 2 * Jr^2 * Dp * D*D*c
-			broadcast!(*,m.PoreOpInstance.term1,m.invRi,m.PoreOpInstance.term1) #term1 = 1/ri*2 * Jr * Dp * D*c
-			m.PoreOpInstance.term1[1] = m.PoreOpInstance.term11[1] #correction at r->0
+			# Term 1 is 
+			# (2/deltaR)^2 .* M^-1 A^r Dp cp
+			mul!(m.PoreOpInstance.term1, m.PoreOpInstance.invMM_Ar,@view(x[m.idx .+ idx_units[sink]])) 
+			@. m.PoreOpInstance.term1 *= m.Dp[j]
 
 			#Pore phase boundary conditions 
-			#Corresponds to the boundary term - 2/Rp Dp L[0,J/eps/Dp]
+			#Corresponds to the boundary term - L (M^-1) (2/deltaR) Rp^2/eps_p * kf (x-x*)
 			@. @views RHS[m.idx .+ idx_units[sink]] = m.PoreOpInstance.boundaryPore[i] * m.PoreOpInstance.LiftMatrixRed 
 
-			#Term 2 - Jr^2 .* Dp .* M^-1 A c
-			mul!(m.PoreOpInstance.term2, m.PoreOpInstance.invMMPoreAMatrix,@view(x[m.idx .+ idx_units[sink]]))
-			broadcast!(*,m.PoreOpInstance.term2,m.Dp[j],m.PoreOpInstance.term2)
-
 			#Assembling RHS
-			@. @views RHS[m.idx .+ idx_units[sink]] += m.PoreOpInstance.term1 - m.PoreOpInstance.term2 - m.Fp * RHS[m.idx_q]
+			@. @views RHS[m.idx .+ idx_units[sink]] += - m.PoreOpInstance.term1 - m.Fp * RHS[m.idx_q]
 
 		end
 
