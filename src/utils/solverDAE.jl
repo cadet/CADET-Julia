@@ -5,7 +5,7 @@
 
 
 # Solve the differential equations using the ODE solver
-function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg=QNDF(autodiff=false))
+function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(0,), alg=IDA())
 
 	# To have outlets as a tuple
 	if typeof(columns)<:ModelBase
@@ -27,17 +27,20 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 		p_jac = nothing
 		analytical_jac = nothing
 	end
-
+	
 	x0 = solverOptions.x0
+	differential_vars = ones(Int64,length(x0))
+	dx0 = zeros(Float64,length(x0))
+	
 	#running simulations
-	for i = 1: length(switches.section_times) - 1 # corresponds to sections i=1
+	for i = 1: length(switches.section_times) - 1 # corresponds to sections i=2
 
 		# If jacobian prototype, compute at every section time as switches might change Jacobian 
 		if solverOptions.prototypeJacobian == true
 			# set up a parameter vector 
 			p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
 			# determine jacobian prototype using finite differences - saves compilation time but perhaps change
-			jacProto = sparse(jac_finite_diff(problem!,p,solverOptions.x0 .+ 1e-6, 1e-8))
+			jacProto = sparse(jac_finite_diff_dae(problemDAE!,p,solverOptions.x0 .+ 1e-6, 1e-8))
 			
 			# set dq0dq to zero when computing SMA w. formulation 1 as dq/dt is not needed to be computed
 			# This makes it slightly faster
@@ -48,12 +51,16 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 			# make jacProto empty such that it is not used
 			jacProto = nothing
 		end
-
+		
+		# Update dx0 for the DAE for inlet 
+		dx0 = zeros(Float64,length(x0))
+		p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
+		problemDAE!(dx0,zeros(Float64,length(x0)),x0,p,0.0)
+		
 		# update the tspan and the inlets through i to the system
 		tspan = (switches.section_times[i], switches.section_times[i+1])
-		p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
-		fun = ODEFunction(problem!; jac_prototype = jacProto, jac = analytical_jac)
-		prob = ODEProblem(fun, x0, (0, tspan[2]-tspan[1]), p)
+		fun = DAEFunction(problemDAE!; jac_prototype = jacProto ) #jac_prototype = jacProto, jac = analytical_jac
+		prob = DAEProblem(fun, dx0, x0, (0.0, tspan[2]-tspan[1]), p, differential_vars = differential_vars)
 		sol = solve(prob, alg, saveat=solverOptions.solution_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol) 
 		
 		#New initial conditions
@@ -83,27 +90,35 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 
 		# Write to HDF5 using a function if relevant 
 		
-		
 	end
     return nothing
 end
 
 
 # Define the function representing the differential equations for transport and binding
-function problem!(RHS, x, p, t)
+function problemDAE!(out, RHS, x, p, t)
     columns, RHS_q, cpp, qq, i, nColumns, idx_units, switches = p
 	# i corresponds to section 
 	
 	@inbounds for h = 1:nColumns 
+
 		# Compute binding term. 
 		# The cpp, qq and rhs_q are set up to ease code reading
 		cpp = @view x[1 + columns[h].adsStride + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp + idx_units[h]]
 		qq = @view x[1 + columns[h].adsStride + columns[h].bindStride*columns[h].nComp + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp * 2 + idx_units[h]]
-		RHS_q = @view RHS[1 + columns[h].adsStride + columns[h].bindStride * columns[h].nComp + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp * 2 + idx_units[h]]
-		compute_binding!(RHS_q, cpp, qq, columns[h].bind, columns[h].nComp, columns[h].bindStride, t)
+		compute_binding!(columns[h].RHS_q, cpp, qq, columns[h].bind, columns[h].nComp, columns[h].bindStride, t)
 
 		# Compute transport term
-		compute_transport!(RHS, RHS_q, cpp, x, columns[h], t, i, h, switches, idx_units)
+		RHS_q = @view RHS[1 + columns[h].adsStride + columns[h].bindStride*columns[h].nComp + idx_units[h] : columns[h].adsStride + columns[h].bindStride * columns[h].nComp * 2 + idx_units[h]]
+		compute_transport!(out, RHS_q, cpp, x, columns[h], t, i, h, switches, idx_units)
+		
+		# Subtract mobile phase RHS
+		columns[1].idx = 1 + idx_units[h] : idx_units[h] + columns[h].ConvDispOpInstance.nPoints * columns[h].nComp
+		@. @views out[columns[1].idx] -= RHS[columns[1].idx]
+
+		
+		#Add the isotherm part to the DAE - now steady
+		@. @views out[1 + columns[1].adsStride + columns[1].bindStride*columns[1].nComp + idx_units[h] : columns[1].adsStride + 2 * columns[1].bindStride * columns[1].nComp + idx_units[h]] = columns[h].RHS_q
 
 	end
 	nothing

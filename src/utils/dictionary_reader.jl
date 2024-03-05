@@ -244,13 +244,17 @@ function create_units(model::Union{Dict, OrderedDict})
 end
 
 function get_bind(value,bindstride)
+	# If a kinetic constant is specified 
+	kkin = haskey(value, "kkin") ? value["kkin"] : 1.0
+	
 	if value["adsorption_model"]=="LINEAR"
 		bind = Linear(
 						ka = value["adsorption"]["LIN_KA"],
 						kd = value["adsorption"]["LIN_KD"],
 						is_kinetic = value["adsorption"]["is_kinetic"], #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
 						nBound = value["discretization"]["nbound"], # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
-						bindStride = bindstride, # Not necessary for Linear model, only for Langmuir and SMA		
+						bindStride = bindstride, # Not necessary for Linear model, only for Langmuir and SMA	
+						kkin = kkin
 						)
 		
 	elseif value["adsorption_model"]=="MULTI_COMPONENT_LANGMUIR"
@@ -261,6 +265,7 @@ function get_bind(value,bindstride)
 						is_kinetic = value["adsorption"]["is_kinetic"], #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
 						nBound = value["discretization"]["nbound"], # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
 						bindStride = bindstride, # Not necessary for Linear model, only for Langmuir and SMA		
+						kkin = kkin
 						)
 
 	elseif value["adsorption_model"]=="STERIC_MASS_ACTION"
@@ -272,7 +277,8 @@ function get_bind(value,bindstride)
                     sigma = value["adsorption"]["SMA_SIGMA"], # [-], shielding
                     is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
                     nBound = value["discretization"]["nbound"], # Number of bound components, salt not used anyway
-                    bindStride = bindstride # 
+                    bindStride = bindstride, # 
+					kkin = kkin
                     )
 
 	else

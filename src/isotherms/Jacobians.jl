@@ -22,6 +22,30 @@ function jac_finite_diff(F, p, x0, epsilon=1e-8)
 	return jacProto
 end
 
+# Same as above just for DAEs instead
+function jac_finite_diff_dae(F, p, x0, epsilon=1e-8)
+	n = length(x0)  # Number of variables in the system
+	jacProto = zeros(n, n)  # Initialize the Jacobian matrix
+
+
+	for i in range(1,n)
+		pertubation = zeros(n)
+		pertubation[i] = epsilon
+		RHS_p = zeros(n)
+		RHS_m = zeros(n)
+        out_p = zeros(n)
+        out_m = zeros(n)
+
+		F(out_p,RHS_p,x0 .+ pertubation, p,0.0)
+		
+		F(out_m,RHS_m,x0, p,0.0)
+		
+		@. @views jacProto[:, i] = (out_p - out_m) / (epsilon)  # Calculate the i-th column of the Jacobian matrix
+	end
+
+	return jacProto
+end
+
 
 # Compute the static jacobian and determine allocation matrices determining the Jacobian 
 function jac_static(model) #
