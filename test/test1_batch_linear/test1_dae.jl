@@ -40,7 +40,7 @@ model["root"]["input"]["model"]["unit_001"]["velocity"] = 2/60
 model["root"]["input"]["model"]["unit_001"]["adsorption_model"] = "LINEAR"
 
 model["root"]["input"]["model"]["unit_001"]["adsorption"] = OrderedDict()
-model["root"]["input"]["model"]["unit_001"]["adsorption"]["is_kinetic"] = false
+model["root"]["input"]["model"]["unit_001"]["adsorption"]["is_kinetic"] = true
 model["root"]["input"]["model"]["unit_001"]["adsorption"]["LIN_KA"] = [1.0]
 model["root"]["input"]["model"]["unit_001"]["adsorption"]["LIN_KD"] = [1.0]
 
@@ -88,12 +88,12 @@ model["root"]["input"]["solver"]["time_integrator"]["reltol"] = 1e-10
 
 inlets, outlets, columns, switches, solverOptions = create_units(model)
 
-solve_model(
+using Sundials
+solve_model_dae(
 			columns = columns,
 			switches = switches,
 			solverOptions = solverOptions, 
 			outlets = outlets, # Defaults to (0,) as output is also written to units 
-			alg = QNDF(autodiff=false), # Defaults to alg = QNDF(autodiff=false)
 			)
 
 using Plots
@@ -109,10 +109,3 @@ else
     println("Test unsuccesful - error larger than 1e-5")
 end
 
-using Sundials
-solve_model_dae(
-			columns = columns,
-			switches = switches,
-			solverOptions = solverOptions, 
-			outlets = outlets, # Defaults to (0,) as output is also written to units 
-			)

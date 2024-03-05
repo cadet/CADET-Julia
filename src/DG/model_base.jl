@@ -566,9 +566,7 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::GRM, t, section, sink, switch
 			#Pore phase for each component starts after all mobile phases
 			#through all mobile phase, through pore phase j, at porephase i
 			m.idx = 1 + m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + (i-1) * m.PoreOpInstance.nNodesPore + idx_units[sink] : m.PoreOpInstance.nNodesPore + m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints  + (i-1) * m.PoreOpInstance.nNodesPore + idx_units[sink]
-			
-			#Stationary phase starts after all pore phases have been determined
-			m.idx_q = m.nComp*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.stridePore + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + 1 + (i-1) * m.PoreOpInstance.nNodesPore : m.PoreOpInstance.nNodesPore + m.nComp*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.stridePore + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + (i-1) * m.PoreOpInstance.nNodesPore
+			m.idx_q = 1 + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + (i-1) * m.PoreOpInstance.nNodesPore : m.PoreOpInstance.nNodesPore + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints  + (i-1) * m.PoreOpInstance.nNodesPore
 
 			# Term 1 is 
 			# (2/deltaR)^2 .* M^-1 A^r Dp cp
@@ -580,7 +578,7 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::GRM, t, section, sink, switch
 			@. @views RHS[m.idx] = m.PoreOpInstance.boundaryPore[i] * m.PoreOpInstance.LiftMatrixRed 
 
 			#Assembling RHS
-			@. @views RHS[m.idx] += - m.PoreOpInstance.term1 - m.Fp * RHS[m.idx_q]
+			@. @views RHS[m.idx] += - m.PoreOpInstance.term1 - m.Fp * RHS_q[m.idx_q]
 
 		end
 
