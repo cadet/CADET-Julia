@@ -547,15 +547,16 @@ function compute_transport!(RHS, RHS_q, x, m::GRM, t, section, sink, switches, i
 
 		#Surface flux to the particles 
 		# idx_p is a step range 
-		m.idx_p = m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.nNodesPore : m.PoreOpInstance.nNodesPore : m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints
+		m.idx_p = m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.nNodesPore + + idx_units[sink] : m.PoreOpInstance.nNodesPore : m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + + idx_units[sink]
+		m.idx = m.idx .+ idx_units[sink]
 
 		# Mobile phase
-		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
+		@. @views RHS[m.idx] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx] - x[m.idx_p])
 
 		# Pore phase - Each idx has _nPolyPore number of states Adding the boundary flux
 		# The boundary flux term is computed as kf(x-x*) 
 		# The whole term is L (M^-1) (2/deltaR) Rp^2/eps_p * kf (x-x*)
-		@. @views m.PoreOpInstance.boundaryPore =  m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
+		@. @views m.PoreOpInstance.boundaryPore =  m.kf[j] * (x[m.idx] - x[m.idx_p])
 
 
 		#Now the rest is computed
@@ -564,22 +565,22 @@ function compute_transport!(RHS, RHS_q, x, m::GRM, t, section, sink, switches, i
 
 			#Pore phase for each component starts after all mobile phases
 			#through all mobile phase, through pore phase j, at porephase i
-			m.idx = m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + 1 + (i-1) * m.PoreOpInstance.nNodesPore : m.PoreOpInstance.nNodesPore + m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints  + (i-1) * m.PoreOpInstance.nNodesPore
+			m.idx = 1 + m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + (i-1) * m.PoreOpInstance.nNodesPore + idx_units[sink] : m.PoreOpInstance.nNodesPore + m.nComp*m.ConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints  + (i-1) * m.PoreOpInstance.nNodesPore + idx_units[sink]
 			
 			#Stationary phase starts after all pore phases have been determined
 			m.idx_q = m.nComp*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.stridePore + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + 1 + (i-1) * m.PoreOpInstance.nNodesPore : m.PoreOpInstance.nNodesPore + m.nComp*m.ConvDispOpInstance.nPoints + m.PoreOpInstance.stridePore + (j-1) *m.PoreOpInstance.nNodesPore*m.ConvDispOpInstance.nPoints + (i-1) * m.PoreOpInstance.nNodesPore
 
 			# Term 1 is 
 			# (2/deltaR)^2 .* M^-1 A^r Dp cp
-			mul!(m.PoreOpInstance.term1, m.PoreOpInstance.invMM_Ar,@view(x[m.idx .+ idx_units[sink]])) 
-			@. m.PoreOpInstance.term1 *= m.Dp[j]
+			mul!(m.PoreOpInstance.term1, m.PoreOpInstance.invMM_Ar,@view(x[m.idx])) 
+			broadcast!(*, m.PoreOpInstance.term1, m.Dp[j], m.PoreOpInstance.term1) # 
 
 			#Pore phase boundary conditions 
 			#Corresponds to the boundary term - L (M^-1) (2/deltaR) Rp^2/eps_p * kf (x-x*)
-			@. @views RHS[m.idx .+ idx_units[sink]] = m.PoreOpInstance.boundaryPore[i] * m.PoreOpInstance.LiftMatrixRed 
+			@. @views RHS[m.idx] = m.PoreOpInstance.boundaryPore[i] * m.PoreOpInstance.LiftMatrixRed 
 
 			#Assembling RHS
-			@. @views RHS[m.idx .+ idx_units[sink]] += - m.PoreOpInstance.term1 - m.Fp * RHS[m.idx_q]
+			@. @views RHS[m.idx] += - m.PoreOpInstance.term1 - m.Fp * RHS[m.idx_q]
 
 		end
 
