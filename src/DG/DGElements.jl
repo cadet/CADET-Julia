@@ -73,32 +73,56 @@ end
 
 
 #  factor to normalize legendre polynomials
-function orthonFactor(polyDeg)
+function orthonFactor(polyDeg, a = 0.0, b = 0.0)
+    # a = alpha, b = beta
     n = polyDeg
-    a = 0.0
-    b = 0.0
+
     return sqrt(((2.0 * n + a + b + 1.0) * gamma(n + 1.0) * gamma(n + a + b + 1.0)) / (2.0^(a + b + 1.0) * gamma(n + a + 1.0) * gamma(n + b + 1.0)))
 end
 
-# calculates the Vandermonde matrix of the normalized legendre polynomials
-function getVandermonde_LEGENDRE(_nodes,_polyDeg)
+# calculates the Vandermonde matrix of the normalized jacobi polynomials
+function jacVandermondeMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     
     V = zeros(Float64, length(_nodes), length(_nodes))
-
-    alpha = 0.0
-    beta = 0.0
     
     # degree 0
-    V[:, 1] .= orthonFactor(0)
+    V[:, 1] .= orthonFactor(0, alpha, beta)
     
     # degree 1
-    V[:, 2] .= _nodes .* orthonFactor(1)
+    V[:, 2] .= ((_nodes .- 1) ./ 2 .* (alpha .+ beta .+ 2) .+ (alpha .+  1.0)) .* orthonFactor(1, alpha, beta)
 
 
     for deg in 2:_polyDeg
         for node in 1:size(_nodes)[1] #length(_nodes)
-            orthn_1 = orthonFactor(deg) / orthonFactor(deg - 1)
-            orthn_2 = orthonFactor(deg) / orthonFactor(deg - 2)
+            orthn_1 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 1, alpha, beta)
+            orthn_2 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 2, alpha, beta)
+
+            V[node, deg + 1] = orthn_1 * ((2.0 * deg + alpha + beta - 1.0) * ((2.0 * deg + alpha + beta) * (2.0 * deg + alpha + beta - 2.0) * _nodes[node] + alpha * alpha - beta * beta) * V[node, deg])
+            V[node, deg + 1] -= orthn_2 * (2.0 * (deg + alpha - 1.0) * (deg + beta - 1.0) * (2.0 * deg + alpha + beta) * V[node, deg - 1]) 
+            V[node, deg + 1] /= (2.0 * deg * (deg + alpha + beta) * (2.0 * deg + alpha + beta - 2.0))
+ 
+        end
+    end
+    
+    return V
+end
+
+# calculates the Vandermonde matrix of the normalized legendre polynomials
+function getVandermonde_LEGENDRE(_nodes,_polyDeg, alpha=0.0, beta=0.0)
+    
+    V = zeros(Float64, length(_nodes), length(_nodes))
+    
+    # degree 0
+    V[:, 1] .= orthonFactor(0, alpha, beta)
+    
+    # degree 1
+    V[:, 2] .= _nodes .* orthonFactor(1, alpha, beta)
+
+
+    for deg in 2:_polyDeg
+        for node in 1:size(_nodes)[1] #length(_nodes)
+            orthn_1 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 1, alpha, beta)
+            orthn_2 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 2, alpha, beta)
 
             fac_1 = ((2.0 * deg - 1.0) * 2.0 * deg * (2.0 * deg - 2.0) * _nodes[node]) / (2.0 * deg * deg * (2.0 * deg - 2.0))
             fac_2 = (2.0 * (deg - 1.0) * (deg - 1.0) * 2.0 * deg) / (2.0 * deg * deg * (2.0 * deg - 2.0))
@@ -111,9 +135,14 @@ function getVandermonde_LEGENDRE(_nodes,_polyDeg)
 end
 
 #Inverse mass matrix
-function invMMatrix(_nodes,_polyDeg)
-    _invMM = getVandermonde_LEGENDRE(_nodes,_polyDeg) * transpose(getVandermonde_LEGENDRE(_nodes,_polyDeg))
+function invMMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
+    _invMM = jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta) * transpose(jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta))
     return _invMM
+end
+
+# Mass matrix
+function MMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
+    return inv(invMMatrix(_nodes,_polyDeg, alpha, beta))
 end
 
 # #Stiffness matrix
@@ -124,7 +153,10 @@ end
 # end
 
 # Second order stiffness matrix
-
+function second_order_stiff_matrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
+    #Mass matrix * Derivative matrix
+    return Transpose(derivativeMatrix(_polyDeg,_nodes)) * MMatrix(_nodes,_polyDeg, alpha, beta) * derivativeMatrix(_polyDeg,_nodes)
+end
 
 
 end
