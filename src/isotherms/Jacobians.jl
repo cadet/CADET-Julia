@@ -48,12 +48,10 @@ end
 
 
 # Compute the static jacobian and determine allocation matrices determining the Jacobian 
-function jac_static(model) #
-
-    # ConvDispJac = zeros(model.nComp * model.bindStride + model.adsStride, model.nComp * model.bindStride + model.adsStride)
-    # ConvDispOperatorDGJac.ConvDispJacobian!(ConvDispJac,model.ConvDispOpInstance.nNodes, model.u, model.ConvDispOpInstance.polyDerM, model.ConvDispOpInstance.invMM, model.ConvDispOpInstance.invWeights,model.ConvDispOpInstance.polyDeg, model.ConvDispOpInstance.deltaZ, model.nComp, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.d_ax, model.exactInt)
+function jac_static(model, u, p) #
+	
     # Get the convection dispersion jacobian operator, located in ConvDispOperatorDGJac
-    ConvDispJac = ConvDispJacobian(model)
+    ConvDispJac = ConvDispJacobian(model, u, p)
 
     # Allocation matrices 
     dqdc = zeros(Float64, model.nComp * model.bindStride, model.nComp * model.bindStride)
@@ -110,10 +108,10 @@ end
 
 
 function analytical_jac!(J, x, p, t)
-    model::modelBase, bind::bindingBase = p
+    model = p[1]
 
     # Compute dynamic part of Jacobian from isotherm
-    compute_jac_iso!(J,x,model,bind,p,t) # refers to the specific jacobian for binding
+    compute_jac_iso!(J,x,model[1],model[1].bind,p,t) # refers to the specific jacobian for binding
 
     # Assemble Jacobian 
     # computeJacAss!(J,model,p) # This is not necessary needed in a function 
@@ -121,15 +119,15 @@ function analytical_jac!(J, x, p, t)
     dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac = p[end]
 
     # Jacobian for mobile phase equations
-    @. dcdc += - model.Fjac * dqdc
-    @. dcdq += - model.Fjac * dqdq
+    @. dcdc += - model[1].Fjac * dqdc
+    @. dcdq += - model[1].Fjac * dqdq
 
-    @. @views J[1 : model.adsStride + model.nComp * model.bindStride, 1 : model.adsStride + model.nComp * model.bindStride] = ConvDispJac
+    @. @views J[1 : model[1].adsStride + model[1].nComp * model[1].bindStride, 1 : model[1].adsStride + model[1].nComp * model[1].bindStride] = ConvDispJac
 
-    @. @views J[1 + model.adsStride : model.adsStride + model.nComp * model.bindStride , 1 + model.adsStride : model.adsStride + model.nComp * model.bindStride] += dcdc 
-    @. @views J[1 + model.adsStride : model.adsStride + model.nComp * model.bindStride , 1 + model.adsStride + model.nComp * model.bindStride : model.adsStride + model.nComp * model.bindStride*2] = dcdq
-    @. @views J[1 + model.adsStride + model.nComp * model.bindStride : model.adsStride + model.nComp * model.bindStride*2, 1 + model.adsStride : model.adsStride + model.nComp * model.bindStride] = dqdc
-    @. @views J[1 + model.adsStride + model.nComp * model.bindStride : model.adsStride + model.nComp * model.bindStride*2, 1 + model.adsStride + model.nComp * model.bindStride : model.adsStride + model.nComp * model.bindStride*2] = dqdq
+    @. @views J[1 + model[1].adsStride : model[1].adsStride + model[1].nComp * model[1].bindStride , 1 + model[1].adsStride : model[1].adsStride + model[1].nComp * model[1].bindStride] += dcdc 
+    @. @views J[1 + model[1].adsStride : model[1].adsStride + model[1].nComp * model[1].bindStride , 1 + model[1].adsStride + model[1].nComp * model[1].bindStride : model[1].adsStride + model[1].nComp * model[1].bindStride*2] = dcdq
+    @. @views J[1 + model[1].adsStride + model[1].nComp * model[1].bindStride : model[1].adsStride + model[1].nComp * model[1].bindStride*2, 1 + model[1].adsStride : model[1].adsStride + model[1].nComp * model[1].bindStride] = dqdc
+    @. @views J[1 + model[1].adsStride + model[1].nComp * model[1].bindStride : model[1].adsStride + model[1].nComp * model[1].bindStride*2, 1 + model[1].adsStride + model[1].nComp * model[1].bindStride : model[1].adsStride + model[1].nComp * model[1].bindStride*2] = dqdq
     
     nothing
 end

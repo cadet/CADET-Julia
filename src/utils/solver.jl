@@ -17,25 +17,32 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 		outlets = (outlets,)
 	end
 
-	# If Analytical Jacobian == yes, set analytical Jacobian
-	if solverOptions.analyticalJacobian == true
-		# determine static jacobian and allocation matrices that are stored in p_jac
-		p_jac = jac_static(columns[1])
-		analytical_jac = analytical_jac! #refers to the function
-	else
-		# make p_jac and analytical_jac empty such that they are not used
-		p_jac = nothing
-		analytical_jac = nothing
-	end
+	
 
 	x0 = solverOptions.x0
 	#running simulations
 	for i = 1: length(switches.section_times) - 1 # corresponds to sections i=1
 
+		# Set up parameter vector and empty elements 
+		jacProto = nothing
+		p_jac = nothing
+		analytical_jac = nothing
+		p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
+
+
+		# If Analytical Jacobian == yes, set analytical Jacobian
+		# Is only supported for batch operation! 
+		if solverOptions.analyticalJacobian == true
+		
+			# determine static jacobian and allocation matrices that are stored in p_jac
+			p_jac = jac_static(columns[1], switches.ConnectionInstance.u_tot[switches.switchSetup[i], 1], p) 
+			p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
+			analytical_jac = analytical_jac! #refers to the function
+		end
+
 		# If jacobian prototype, compute at every section time as switches might change Jacobian 
 		if solverOptions.prototypeJacobian == true
-			# set up a parameter vector 
-			p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
+
 			# determine jacobian prototype using finite differences - saves compilation time but perhaps change
 			jacProto = sparse(jac_finite_diff(problem!,p,solverOptions.x0 .+ 1e-6, 1e-8))
 			
@@ -44,14 +51,10 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 			# if typeof(bind)==SMA 
 			# 	@. @views jacProto[1 +columns[h].adsStride +columns[h].nComp*units[h].bindStride :columns[h].bindStride +columns[h].adsStride +columns[h].nComp*units[h].bindStride] = 0
 			# end
-		else
-			# make jacProto empty such that it is not used
-			jacProto = nothing
 		end
 
 		# update the tspan and the inlets through i to the system
 		tspan = (switches.section_times[i], switches.section_times[i+1])
-		p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
 		fun = ODEFunction(problem!; jac_prototype = jacProto, jac = analytical_jac)
 		prob = ODEProblem(fun, x0, (0, tspan[2]-tspan[1]), p)
 		sol = solve(prob, alg, saveat=solverOptions.solution_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol) 

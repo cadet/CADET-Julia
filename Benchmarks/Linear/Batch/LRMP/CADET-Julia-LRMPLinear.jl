@@ -113,4 +113,4 @@ evaluate_convergence(model_setup, QNDF(autodiff=false), c_analytical, nComp, nCe
 
 # Evaluate ODe solvers and save results in ODETests folder 
 using Plots, Sundials
-[evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, [polyDeg[1]], 1, "LRMP", joinpath(@__DIR__,"ODETests")) for _ in 1:2]
+[evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell[1:end-1], [polyDeg[1]], 1, "LRMP", joinpath(@__DIR__,"ODETests")) for _ in 1:2]
