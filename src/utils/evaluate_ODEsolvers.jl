@@ -62,6 +62,9 @@ function evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, p
 		for h=1:length(polyDegPore)
 			for j=1:size(polyDeg)[1]
 				for k=1:size(nCell)[1]
+					println("polyDegPore = $(polyDegPore[h])")
+					println("polyDeg = $(polyDeg[j])")
+					println("nCell = $(nCell[k])")
 					
 					# Solve without analytical Jacobian
 					if transport_model == "GRM"

@@ -333,12 +333,12 @@ function calcConvDispDGSEMJacobian(jacobian, _nCells, _strideCell, _strideNode, 
 end
 
 # Static part of the Jacobian for LRM
-function ConvDispJacobian(model::LRM)
+function ConvDispJacobian(model::LRM, u, p)
     ConvDispJac = zeros(model.nComp * model.bindStride + model.adsStride, model.nComp * model.bindStride + model.adsStride)
 
     #   Convection part
     DGjacAxConvBlock = zeros(model.ConvDispOpInstance.nNodes, model.ConvDispOpInstance.nNodes + 1)
-    DGjacobianConvBlock!(DGjacAxConvBlock, model.ConvDispOpInstance.nNodes, model.u, model.ConvDispOpInstance.polyDerM, model.exactInt, model.ConvDispOpInstance.invMM, model.ConvDispOpInstance.invWeights, model.ConvDispOpInstance.deltaZ)
+    DGjacobianConvBlock!(DGjacAxConvBlock, model.ConvDispOpInstance.nNodes, u, model.ConvDispOpInstance.polyDerM, model.exactInt, model.ConvDispOpInstance.invMM, model.ConvDispOpInstance.invWeights, model.ConvDispOpInstance.deltaZ)
 
 
     #   Dispersion part
@@ -366,9 +366,9 @@ function ConvDispJacobian(model::LRM)
         compstride = (i-1) * model.ConvDispOpInstance.nNodes * model.nCells
 
         if model.exactInt == 1
-            calcConvDispDGSEMJacobian(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, model.u, model.nComp, compstride)
+            calcConvDispDGSEMJacobian(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, u, model.nComp, compstride)
         else
-            calcConvDispCollocationDGSEMJacobian!(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, model.u, model.nComp,compstride)
+            calcConvDispCollocationDGSEMJacobian!(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, u, model.nComp,compstride)
     
         end
     end
@@ -533,12 +533,12 @@ end
 # end
 
 #Static part of the Jacobian for LRMP
-function ConvDispJacobian(model::LRMP)
+function ConvDispJacobian(model::LRMP, u, p)
     ConvDispJac = zeros(model.nComp * model.bindStride + model.adsStride, model.nComp * model.bindStride + model.adsStride)
 
     #   Convection part
     DGjacAxConvBlock = zeros(model.ConvDispOpInstance.nNodes, model.ConvDispOpInstance.nNodes + 1)
-    DGjacobianConvBlock!(DGjacAxConvBlock, model.ConvDispOpInstance.nNodes, model.u, model.ConvDispOpInstance.polyDerM, model.exactInt, model.ConvDispOpInstance.invMM, model.ConvDispOpInstance.invWeights, model.ConvDispOpInstance.deltaZ)
+    DGjacobianConvBlock!(DGjacAxConvBlock, model.ConvDispOpInstance.nNodes, u, model.ConvDispOpInstance.polyDerM, model.exactInt, model.ConvDispOpInstance.invMM, model.ConvDispOpInstance.invWeights, model.ConvDispOpInstance.deltaZ)
 
 
     #   Dispersion part
@@ -572,7 +572,7 @@ function ConvDispJacobian(model::LRMP)
         # jacobian = ConvDispJac
 
         if model.exactInt == 1
-            calcConvDispDGSEMJacobian(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, model.u, model.nComp, compstride)
+            calcConvDispDGSEMJacobian(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, u, model.nComp, compstride)
 
             #Adding the transfer term
 
@@ -583,7 +583,7 @@ function ConvDispJacobian(model::LRMP)
             @. @views ConvDispJac[1 + jacobiStride*model.nComp + compstride :  jacobiStride + jacobiStride*model.nComp + compstride, 1 + compstride :  compstride + jacobiStride] += dcp #dcp/dcl
 
         else
-            calcConvDispCollocationDGSEMJacobian!(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, model.u, model.nComp,compstride)
+            calcConvDispCollocationDGSEMJacobian!(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, u, model.nComp,compstride)
 
             #Adding the transfer term
             @. @views ConvDispJac[1 + compstride :  compstride + jacobiStride, 1 + compstride :  compstride + jacobiStride] += dcl #dcl/dcl
@@ -597,24 +597,26 @@ function ConvDispJacobian(model::LRMP)
 end
 
 #Static part of the Jacobian for GRM
-function ConvDispJacobian(model::GRM)
+function ConvDispJacobian(model::GRM, u, p)
+    columns, RHS_q, cpp, qq, i, nColumns, idx_units, switches = p
 
     # The static part of the Jacobian is determined using finite difference 
     # Determine x0 and dummy variables. A 'fake' linear GRM is used with zero coefficients to
     x00 = zeros(Float64,model.adsStride + model.bindStride*model.nComp*2)
-    bind0 = Linear(
-        ka = zeros(Float64,model.nComp),
-        kd = zeros(Float64,model.nComp),
-        is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
-        nBound = zeros(Bool,model.nComp), # Number of bound components
-        bindStride = model.bindStride # Not necessary for Linear model, only for Langmuir and SMA 
-        )
+    model0 = deepcopy(columns[1])
+    model0.bind = Linear(
+                        ka = zeros(Float64,model.nComp),
+                        kd = zeros(Float64,model.nComp),
+                        is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
+                        nBound = zeros(Bool,model.nComp), # Number of bound components
+                        bindStride = model.bindStride # Not necessary for Linear model, only for Langmuir and SMA 
+                        )
 
     # Using the GRM transport model 
-    p0 = (model, bind0, model.RHS_q, 2)
+    p0 = ((model0, ), RHS_q, cpp, qq, i, nColumns, idx_units, switches)
 
     # Computing using finite difference. 
-    ConvDispJac = sparse(JacFiniteDiff(problem!, p0, x00, 1e-8))
+    ConvDispJac = sparse(jac_finite_diff(problem!, p0, x00, 1e-8))
 
     # Take out only the convectiond dispersion part. 
     ConvDispJac = ConvDispJac[1 : model.nComp * model.bindStride + model.adsStride, 1 : model.nComp * model.bindStride + model.adsStride]
