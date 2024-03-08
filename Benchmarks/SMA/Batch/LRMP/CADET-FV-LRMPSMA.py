@@ -14,8 +14,8 @@ import pandas as pd
 
 from cadet import Cadet
 # Cadet.cadet_path = r'C:\Users\jespfra\Anaconda3\bin\cadet-cli'
-# Cadet.cadet_path = r'C:\Users\Jespfra\AppData\Local\miniconda3\envs\CADETenv\bin\cadet-cli'
-Cadet.cadet_path = r'C:\Users\pbzit\miniconda3\envs\CADETenv\bin\cadet-cli'
+Cadet.cadet_path = r'C:\Users\Jespfra\AppData\Local\miniconda3\envs\CADETenv\bin\cadet-cli'
+# Cadet.cadet_path = r'C:\Users\pbzit\miniconda3\envs\CADETenv\bin\cadet-cli'
 
 
 #%% General model options
@@ -231,5 +231,5 @@ convergenceDataFV = pd.DataFrame({'DOF': DOF, 'ncols': ncols,'runtime': runtime,
 
 
 #Save data in a CSV file
-convergenceDataFV.to_csv('CADETFVConvergence.csv')
+# convergenceDataFV.to_csv('CADETFVConvergence.csv')
 

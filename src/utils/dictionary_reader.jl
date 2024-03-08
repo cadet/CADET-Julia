@@ -236,7 +236,7 @@ function create_units(model::Union{Dict, OrderedDict})
                         solution_times = collect(model["root"]["input"]["solver"]["user_solution_times"]),
                         # dt = 1.0,
                         prototypeJacobian = true,
-                        analyticalJacobian = false
+                        analyticalJacobian = haskey(model["root"]["input"]["model"][columnIDs[1]]["discretization"], "use_analytic_jacobian") ? model["root"]["input"]["model"][columnIDs[1]]["discretization"]["use_analytic_jacobian"] : false
                         )
     
                         
