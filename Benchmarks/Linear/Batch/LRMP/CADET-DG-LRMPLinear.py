@@ -46,7 +46,6 @@ def model(ncol,polydeg,exactInt,ode):
     model.root.input.model.unit_001.unit_type = 'LUMPED_RATE_MODEL_WITH_PORES_DG'
     model.root.input.model.unit_001.ncomp = n_comp 
     
-    model.root.input.model.unit_004.ncomp = n_comp
 
     ## Geometry
     model.root.input.model.unit_001.col_porosity = 0.6

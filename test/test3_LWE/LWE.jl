@@ -76,7 +76,7 @@ model["root"]["input"]["model"]["unit_002"]["ncomp"] = nComp
 
 # Set elements for solver
 model["root"]["input"]["solver"] = OrderedDict("sections" => OrderedDict())
-model["root"]["input"]["solver"]["sections"]["nsec"] = 4
+model["root"]["input"]["solver"]["sections"]["nsec"] = 3
 model["root"]["input"]["solver"]["sections"]["section_times"] = [0.0, 10, 90, 1500]
 model["root"]["input"]["solver"]["sections"]["section_continuity"] = [0]
 

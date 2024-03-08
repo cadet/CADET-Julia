@@ -65,13 +65,15 @@ function evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, p
 					
 					# Solve without analytical Jacobian
 					if transport_model == "GRM"
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, false, solvers[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, false)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers[i])
 					else 
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], 1, false, solvers[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], 1, false)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers[i])
 					end
 					err = 0
-					for n = 0:size(output)[2]-2
-						err = maximum([err, maximum(abs.(output[:,n+1]-c_analytical[:,"C$n"]))])
+					for n = 0:size(outlets[1].solution_outlet)[2]-1
+						err = maximum([err, maximum(abs.(outlets[1].solution_outlet[:,n+1]-c_analytical[:,"C$n"]))])
 					end
 					
 					# Store data
@@ -81,13 +83,15 @@ function evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, p
 					
 					# Solve with analytical Jacobian
 					if transport_model == "GRM"
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, true, solvers[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, true)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers[i])
 					else
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], 1, true, solvers[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], 1, true)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers[i])
 					end
 					err = 0
-					for n = 0:size(output)[2]-2
-						err = maximum([err, maximum(abs.(output[:,n+1]-c_analytical[:,"C$n"]))])
+					for n = 0:size(outlets[1].solution_outlet)[2]-1
+						err = maximum([err, maximum(abs.(outlets[1].solution_outlet[:,n+1]-c_analytical[:,"C$n"]))])
 					end
 					
 					# Store data
@@ -97,13 +101,15 @@ function evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, p
 					
 					# Solve without Jacobian and preconditioning 
 					if transport_model == "GRM"
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, false, solvers_prec[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, false)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers_prec[i])
 					else 
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], 1, false, solvers_prec[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], 1, false)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers_prec[i])
 					end
 					err = 0
-					for n = 0:size(output)[2]-2
-						err = maximum([err, maximum(abs.(output[:,n+1]-c_analytical[:,"C$n"]))])
+					for n = 0:size(outlets[1].solution_outlet)[2]-1
+						err = maximum([err, maximum(abs.(outlets[1].solution_outlet[:,n+1]-c_analytical[:,"C$n"]))])
 					end
 					
 					# Solver with analytical Jacobian
@@ -113,13 +119,15 @@ function evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, p
 					
 					# Solve with Jacobian and preconditioning 
 					if transport_model == "GRM"
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, true, solvers_prec[i])
-					else 
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], 1, true, solvers_prec[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, true)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers_prec[i])
+					else
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], 1, true)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers_prec[i])
 					end
 					err = 0
-					for n = 0:size(output)[2]-2
-						err = maximum([err, maximum(abs.(output[:,n+1]-c_analytical[:,"C$n"]))])
+					for n = 0:size(outlets[1].solution_outlet)[2]-1
+						err = maximum([err, maximum(abs.(outlets[1].solution_outlet[:,n+1]-c_analytical[:,"C$n"]))])
 					end
 					
 					# Store data
@@ -242,13 +250,15 @@ function evaluate_Sundials_solvers(model_setup, c_analytical, nComp, nCell, poly
 				
 					# Solve without analytical Jacobian
 					if transport_model == "GRM"
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, false, solvers_sun[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, false)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers_sun[i])
 					else 
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], 1, false, solvers_sun[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], 1, false)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers_sun[i])
 					end
 					err = 0
-					for n = 0:size(output)[2]-2
-						err = maximum([err, maximum(abs.(output[:,n+1]-c_analytical[:,"C$n"]))])
+					for n = 0:size(outlets[1].solution_outlet)[2]-1
+						err = maximum([err, maximum(abs.(outlets[1].solution_outlet[:,n+1]-c_analytical[:,"C$n"]))])
 					end
 					
 					# Store data
@@ -258,13 +268,15 @@ function evaluate_Sundials_solvers(model_setup, c_analytical, nComp, nCell, poly
 					
 					# Solve with analytical Jacobian
 					if transport_model == "GRM"
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, true, solvers_sun[i])
-					else
-						rtime = @elapsed output = model_setup(nCell[k],polyDeg[j], 1, true, solvers_sun[i])
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, true)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers_sun[i])
+					else 
+						inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], 1, true)
+						rtime = @elapsed solve_model(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = solvers_sun[i])
 					end
 					err = 0
-					for n = 0:size(output)[2]-2
-						err = maximum([err, maximum(abs.(output[:,n+1]-c_analytical[:,"C$n"]))])
+					for n = 0:size(outlets[1].solution_outlet)[2]-1
+						err = maximum([err, maximum(abs.(outlets[1].solution_outlet[:,n+1]-c_analytical[:,"C$n"]))])
 					end
 					
 					# Store data
