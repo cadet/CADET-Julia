@@ -108,9 +108,7 @@ function model_setup(nCells, polyDeg, exactInt, analJac=false)
 end
 
 # Evaluate the convergence using the evaluate_convergence function 
-using BenchmarkTools, Plots
-evaluate_convergence(model_setup, QNDF(autodiff=false), c_analytical, nComp, nCell, polyDeg, 1, "LRMP", @__DIR__)
+evaluate_convergence(QNDF(autodiff=false), c_analytical, nComp, nCell, polyDeg, 1, "LRMP", @__DIR__, true)
 
 # Evaluate ODe solvers and save results in ODETests folder 
-using Plots, Sundials
-[evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, [polyDeg[1]], 1, "LRMP", joinpath(@__DIR__,"ODETests")) for _ in 1:2]
+[evaluate_ODEsolvers(c_analytical, nComp, nCell, [polyDeg[1]], 1, "LRMP", joinpath(@__DIR__,"ODETests"), true) for _ in 1:2]

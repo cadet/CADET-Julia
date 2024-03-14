@@ -113,8 +113,7 @@ end
 
 
 # Evaluate the convergence using the evaluate_convergence function 
-using BenchmarkTools, Plots
-evaluate_convergence(model_setup, CVODE_BDF(), c_analytical, nComp, nCell, polyDeg, 1, "LRM", @__DIR__)
+evaluate_convergence(CVODE_BDF(), c_analytical, nComp, nCell, polyDeg, 1, "LRM", @__DIR__)
 
 # Evaluate ODe solvers and save results in ODETests folder 
 # evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, 1, "LRM", "ODETests//")

@@ -1,4 +1,4 @@
-function evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, polyDegPore::Union{Int64,Vector{Int64}}, transport_model, saveat)
+function evaluate_ODEsolvers(c_analytical, nComp, nCell, polyDeg, polyDegPore::Union{Int64,Vector{Int64}}, transport_model, saveat, eval_dae = false, eval_sundials = false)
 	# A function to evaluate the ODE solvers performance in terms of simluation time. 
 	# The tested solvers are the implicit stiff solvers, FBDF, QBDF and QNDF. 
 	# Four different options are tested. All of them include a prototype Jacobian. 
@@ -192,15 +192,119 @@ function evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, p
 	DOF=DOF,nCellu=nCellu,polyDegu=polyDegu, polyDegPoreu=polyDegPoreu)
 	CSV.write(joinpath(saveat,"ODESolverResults.csv"),df)
 	
+	if eval_dae == true 
+		evaluate_dae_solver(model_setup, c_analytical, nComp, nCell, polyDeg, polyDegPore::Union{Int64,Vector{Int64}}, transport_model, saveat, DOF,p1,p2,p3, df)
+	end
 	# Add some Sundials stuff here, perhaps with an if-statement 
 	# evaluate_Sundials_solvers(model_setup, c_analytical, nComp, nCell, polyDeg, polyDegPore::Union{Int64,Vector{Int64}}, transport_model, saveat, p1, p2, p3, df)
 	
 	nothing 
 end	
+
+
+function evaluate_dae_solver(model_setup, c_analytical, nComp, nCell, polyDeg, polyDegPore::Union{Int64,Vector{Int64}}, transport_model, saveat, DOF,p1,p2,p3, df)
+	
+	
+	maxE_ida =[]
+	maxE_ida_jac =[]
+	runtime_ida = []
+	runtime_ida_jac = []
+	
+	
+	for h=1:length(polyDegPore)
+		for j=1:size(polyDeg)[1]
+			for k=1:size(nCell)[1]
+				println("polyDegPore = $(polyDegPore[h])")
+				println("polyDeg = $(polyDeg[j])")
+				println("nCell = $(nCell[k])")
 				
+				# Solve without analytical Jacobian
+				if transport_model == "GRM"
+					inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, false)
+					# Set the kkin to 1 for DAE systems 
+					columns[1].bind.kkin = ones(Float64,columns[1].nComp)
+					rtime = @elapsed solve_model_dae(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = IDA())
+				else 
+					inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], 1, false)
+					# Set the kkin to 1 for DAE systems 
+					columns[1].bind.kkin = ones(Float64,columns[1].nComp)
+					rtime = @elapsed solve_model_dae(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = IDA())
+				end
+				err = 0
+				for n = 0:size(outlets[1].solution_outlet)[2]-1
+					err = maximum([err, maximum(abs.(outlets[1].solution_outlet[:,n+1]-c_analytical[:,"C$n"]))])
+				end
+				
+				# Store data
+				append!(maxE_ida, err)
+				append!(runtime_ida, rtime)
+				
+				
+				# Solve with analytical Jacobian
+				if transport_model == "GRM"
+					inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], polyDegPore[h], 1, true)
+					# Set the kkin to 1 for DAE systems 
+					columns[1].bind.kkin = ones(Float64,columns[1].nComp)
+					rtime = @elapsed solve_model_dae(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = IDA())
+				else
+					inlets, outlets, columns, switches, solverOptions = model_setup(nCell[k],polyDeg[j], 1, true)
+					# Set the kkin to 1 for DAE systems 
+					columns[1].bind.kkin = ones(Float64,columns[1].nComp)
+					rtime = @elapsed solve_model_dae(columns = columns,switches = switches,solverOptions = solverOptions, outlets = outlets, alg = IDA())
+				end
+				err = 0
+				for n = 0:size(outlets[1].solution_outlet)[2]-1
+					err = maximum([err, maximum(abs.(outlets[1].solution_outlet[:,n+1]-c_analytical[:,"C$n"]))])
+				end
+				
+				# Store data
+				append!(maxE_ida_jac, err)
+				append!(runtime_ida_jac, rtime)
+			end
+			
+			# Insert in plots 
+			plot!(p1,DOF[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],maxE_ida[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],xaxis=:log, yaxis=:log,marker=:circle, linestyle=:dot,label="IDA")
+			plot!(p1,DOF[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],maxE_ida_jac[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],xaxis=:log, yaxis=:log,marker=:circle, linestyle=:dot,label="IDA_jac")
+			
+			plot!(p2,DOF[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],runtime_ida[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],marker=:circle, linestyle=:dot,label="IDA")
+			plot!(p2,DOF[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],runtime_ida_jac[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],marker=:circle, linestyle=:dot,label="IDA_jac")				
 
+			plot!(p3,runtime_ida[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],maxE_ida[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],xaxis=:log, yaxis=:log,marker=:circle, linestyle=:dot,label="IDA")
+			plot!(p3,runtime_ida_jac[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],maxE_ida_jac[1 + (j-1)*length(nCell):length(nCell) + (j-1)*length(nCell)],xaxis=:log, yaxis=:log,marker=:circle, linestyle=:dot,label="IDA_jac")
+		end
+	end
+	
+	# display plots
+	display(p1)
+	display(p2)
+	display(p3)
 
+	savefig(p1,joinpath(saveat,"Convergence.svg"))
+	savefig(p2,joinpath(saveat,"Runtime.svg"))
+	savefig(p3,joinpath(saveat,"RuntimeError.svg"))
+	
+	# save CSV
+	new_cols_df = DataFrame(
+				maxE_ida = maxE_ida,
+				maxE_ida_jac = maxE_ida_jac,
+				runtime_ida = runtime_ida,
+				runtime_ida_jac = runtime_ida_jac
+				)
 
+	# Concatenate the new DataFrame with the original DataFrame	
+	# Create a DataFrame with zeros
+	zeros_df = DataFrame(zeros((size(df, 1)-size(new_cols_df,1)), ncol(new_cols_df)), names(new_cols_df))
+	
+	# Concatenate the new DataFrame with the zeros DataFrame
+	combined_df = vcat(new_cols_df, zeros_df)
+	
+	# Now you can insert the combined DataFrame into the original DataFrame
+	df = hcat(df, combined_df)
+
+	CSV.write(joinpath(saveat,"ODESolverResults.csv"),df)
+	nothing 
+	
+end
 # incompleteLU is a preconditioner that helps solve the ODE problem faster
 function incompletelu(W, du, u, p, t, newW, Plprev, Prprev, solverdata)
 	if newW === nothing || newW
