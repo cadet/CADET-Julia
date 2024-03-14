@@ -42,7 +42,7 @@ def model(ncol,polyDeg, polyDegPore, nCellsPar,is_exact):
 
 
     #Unit operation 2: column
-    model.root.input.model.unit_001.unit_type = 'GENERAL_RATE_MODEL_DG'
+    model.root.input.model.unit_001.unit_type = 'GENERAL_RATE_MODEL'
     model.root.input.model.unit_001.ncomp = n_comp 
 
     ## Geometry
@@ -113,12 +113,13 @@ def model(ncol,polyDeg, polyDegPore, nCellsPar,is_exact):
 
     #Spatial
     ### Grid cells in column and particle: the most important ones - ensure grid-independent solutions
-    model.root.input.model.unit_001.discretization.ncol = ncol #Should be high enough 
-    model.root.input.model.unit_001.discretization.nparcell  = nCellsPar #Should be high enough 
+    model.root.input.model.unit_001.discretization.SPATIAL_METHOD = "DG"
+    model.root.input.model.unit_001.discretization.nelem = ncol 
+    model.root.input.model.unit_001.discretization.par_nelem  = nCellsPar #Should be high enough 
     
     #Polynomial order 
     model.root.input.model.unit_001.discretization.polyDeg = polyDeg
-    model.root.input.model.unit_001.discretization.parPolyDeg = polyDegPore
+    model.root.input.model.unit_001.discretization.par_polyDeg = polyDegPore
     model.root.input.model.unit_001.discretization.exact_integration = is_exact
     model.root.input.model.unit_001.discretization.par_exact_integration = 1 
 

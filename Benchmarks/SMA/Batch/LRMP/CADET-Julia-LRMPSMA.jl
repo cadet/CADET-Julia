@@ -115,9 +115,7 @@ end
 
 
 # Evaluate the convergence using the evaluate_convergence function 
-using BenchmarkTools, Plots
-inlets, outlets, columns, switches, solverOptions = model_setup(8, 4, 1)
-evaluate_convergence(model_setup, QNDF(autodiff=false), c_analytical, nComp, nCell, polyDeg, 1, "LRMP", @__DIR__)
+evaluate_convergence(QNDF(autodiff=false), c_analytical, nComp, nCell, polyDeg, 1, "LRMP", @__DIR__)
 
 # Evaluate ODe solvers and save results in ODETests folder 
 # evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, 1, "LRMP", "ODETests//")

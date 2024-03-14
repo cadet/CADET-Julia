@@ -14,6 +14,9 @@ using DifferentialEquations
 using SparseArrays # To use sparse matrices 
 using DataStructures # To get OrderedDict
 using SpecialFunctions,LinearAlgebra
+using Sundials
+using Plots
+using BenchmarkTools
 
 using IncompleteLU
 

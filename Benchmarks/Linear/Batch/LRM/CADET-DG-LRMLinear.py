@@ -43,7 +43,7 @@ def model(ncol,polydeg,exactInt,ode):
 
 
     #Unit operation 2: column
-    model.root.input.model.unit_001.unit_type = 'LUMPED_RATE_MODEL_WITHOUT_PORES_DG'
+    model.root.input.model.unit_001.unit_type = 'LUMPED_RATE_MODEL_WITHOUT_PORES'
     model.root.input.model.unit_001.ncomp = n_comp 
     
 
@@ -120,7 +120,8 @@ def model(ncol,polydeg,exactInt,ode):
 
     #Spatial
     ### Grid cells in column and particle: the most important ones - ensure grid-independent solutions
-    model.root.input.model.unit_001.discretization.ncol = ncol 
+    model.root.input.model.unit_001.discretization.SPATIAL_METHOD = "DG"
+    model.root.input.model.unit_001.discretization.nelem = ncol 
     
     #Polynomial order 
     model.root.input.model.unit_001.discretization.polydeg = polydeg
@@ -217,7 +218,7 @@ c_analytical = pd.read_csv('Analytical_GRM_Langmuir.csv')
 
 t,c = model(20,4,1,1)
 
-nCells = [4,8,16,32,64,128]
+nCells = [4,8,16,32,64]
 polyDeg = [4,5,6]
 
 plt.plot(c[:,0])

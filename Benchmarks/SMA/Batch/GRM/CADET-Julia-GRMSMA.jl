@@ -115,8 +115,7 @@ function model_setup(nCells, polyDeg, polyDegPore, exactInt, analJac=false)
 end
 
 # Evaluate the convergence using the evaluate_convergence function 
-using BenchmarkTools, Plots
-evaluate_convergence(model_setup, QNDF(autodiff=false), c_analytical, nComp, nCell, polyDeg, polyDegPore, "GRM", @__DIR__)
+evaluate_convergence(QNDF(autodiff=false), c_analytical, nComp, nCell, polyDeg, polyDegPore, "GRM", @__DIR__)
 
 # Evaluate ODe solvers and save results in ODETests folder 
 # evaluate_ODEsolvers(model_setup, c_analytical, nComp, nCell, polyDeg, polyDegPore, "GRM", "ODETests//")

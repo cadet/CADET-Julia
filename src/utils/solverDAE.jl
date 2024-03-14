@@ -17,16 +17,6 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 		outlets = (outlets,)
 	end
 
-	# If Analytical Jacobian == yes, set analytical Jacobian
-	if solverOptions.analyticalJacobian == true
-		# determine static jacobian and allocation matrices that are stored in p_jac
-		p_jac = jac_static(columns[1])
-		analytical_jac = analytical_jac! #refers to the function
-	else
-		# make p_jac and analytical_jac empty such that they are not used
-		p_jac = nothing
-		analytical_jac = nothing
-	end
 	
 	x0 = solverOptions.x0
 	differential_vars = ones(Int64,length(x0))
@@ -34,11 +24,25 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 	
 	#running simulations
 	for i = 1: length(switches.section_times) - 1 # corresponds to sections i=1
+	
+		# Set up parameter vector and empty elements 
+		jacProto = nothing
+		p_jac = nothing
+		analytical_jac = nothing
+		fill!(dx0, 0.0)
+		p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
+		
+		# If Analytical Jacobian == yes, set analytical Jacobian
+		if solverOptions.analyticalJacobian == true
+			# determine static jacobian and allocation matrices that are stored in p_jac
+			p_jac = jac_static(columns[1],switches.ConnectionInstance.u_tot[switches.switchSetup[i], 1], p)
+			p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
+			analytical_jac = analytical_jac! #refers to the function
+		end
 
 		# If jacobian prototype, compute at every section time as switches might change Jacobian 
 		if solverOptions.prototypeJacobian == true
-			# set up a parameter vector 
-			p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
+			
 			# determine jacobian prototype using finite differences - saves compilation time but perhaps change
 			jacProto = sparse(jac_finite_diff_dae(problemDAE!,p,solverOptions.x0 .+ 1e-6, 1e-8))
 			
@@ -53,8 +57,6 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 		end
 		
 		# Update dx0 for the DAE for inlet 
-		fill!(dx0,0.0)
-		p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
 		initialize_dae!(dx0, x0, p)
 		
 		# update the tspan and the inlets through i to the system
@@ -87,7 +89,7 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 				end
 			end
 		end
-		xx = outlets[1].solution_outlet
+		
 		# Write to HDF5 using a function if relevant 
 		
 	end
