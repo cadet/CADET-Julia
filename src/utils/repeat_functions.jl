@@ -7,7 +7,7 @@ function repeat_pattern(a::Vector{Int64})
     last_value_length = 0
     for i in length(a):-1:1
         if a[i] != -1
-            last_value_length = length(a) - i
+            last_value_length = i
             break
         end
     end
