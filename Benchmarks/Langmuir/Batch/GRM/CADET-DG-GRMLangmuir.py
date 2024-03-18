@@ -20,7 +20,7 @@ Cadet.cadet_path = r'C:\Users\pbzit\source\JanDG\install\bin\cadet-cli'
 #%% General model options
 
 
-def model(ncol,polyDeg, polyDegPore, nCellsPar,is_exact):
+def model(ncol,polyDeg, polyDegPore, nCellsPar,is_exact,ode,analJac=1):
 #Setting up the model
     model = Cadet()
 
@@ -63,8 +63,14 @@ def model(ncol,polyDeg, polyDegPore, nCellsPar,is_exact):
     #Isotherm specification
     model.root.input.model.unit_001.adsorption_model = 'MULTI_COMPONENT_LANGMUIR'
     model.root.input.model.unit_001.adsorption.is_kinetic = False    # Kinetic binding
-    model.root.input.model.unit_001.adsorption.MCL_KA = [0.1, 0.05]      # m^3 / (mol * s)   (mobile phase)
-    model.root.input.model.unit_001.adsorption.MCL_KD = [1,1]      # 1 / s (desorption)
+    if ode == 1:
+        model.root.input.model.unit_001.adsorption.is_kinetic = True    # Kinetic binding
+        model.root.input.model.unit_001.adsorption.MCL_KA = [0.1*1e8, 0.05*1e8]      # m^3 / (mol * s)   (mobile phase)
+        model.root.input.model.unit_001.adsorption.MCL_KD = [1*1e8,1*1e8]      # 1 / s (desorption)
+    else:
+        model.root.input.model.unit_001.adsorption.is_kinetic = False    # Kinetic binding
+        model.root.input.model.unit_001.adsorption.MCL_KA = [0.1, 0.05]      # m^3 / (mol * s)   (mobile phase)
+        model.root.input.model.unit_001.adsorption.MCL_KD = [1,1]      # 1 / s (desorption)
     model.root.input.model.unit_001.adsorption.MCL_QMAX = [10,10]      # 1 / s (desorption)
   
     #Initial conditions
@@ -179,32 +185,28 @@ def model(ncol,polyDeg, polyDegPore, nCellsPar,is_exact):
     model.save()
 
     #run model
+    start = timeit.default_timer()
     data = model.run()
+    stop = timeit.default_timer()
+    
+    time.sleep(3)
 
     if data.returncode == 0:
         print("Simulation completed successfully")
         model.load() 
         #%% data treatment
         #Storing data:
-        time = model.root.output.solution.solution_times
-        c = model.root.output.solution.unit_001.solution_outlet        
+        times = model.root.output.solution.solution_times
+        c = model.root.output.solution.unit_001.solution_outlet      
+        return times,c, stop - start    
+        
     else:
-        return [],[]
+        return [],[],[]
 
 
     
      
-    return time,c
 
-def run_simulation(ncol,polyDeg, polyDegPore,nCellsPar, is_exact):
-    for _ in range(4):
-        start = timeit.default_timer()
-        t, c = model(ncol, polyDeg,polyDegPore,nCellsPar, is_exact)
-        stop = timeit.default_timer()
-        time.sleep(2)
-        if len(t)>5:
-            return t, c, stop - start
-    return [], [], 0  # Return empty values if simulation couldn't complete in four attempts
 
 
 
@@ -212,57 +214,12 @@ def run_simulation(ncol,polyDeg, polyDegPore,nCellsPar, is_exact):
 c_analytical = pd.read_csv('Semi-analytical_GRM_Langmuir.csv')
 
 
-nCells = [2,4,8,16,32]
+nCells = [1,2,4,8]
 polyDeg = 4
-polyDegPore = [4,5,6,8,10,12]
+polyDegPore = [4,5,6,8,10]
 nCellsPar = 1
 
 
 
-DOF = []
-nCellu = []
-polyDegPoreu = []
-maxE_e = []
-maxE_i = []
-maxE_e_ode = []
-maxE_i_ode = []
-runtime_e = []
-runtime_i = []
-runtime_e_ode = []
-runtime_i_ode = []
-
-
-for i in range(0,len(polyDegPore)):
-    for l in range(0,len(nCells)):
-        print(f'Polynomial order {polyDegPore[i]}')
-        print(f'Column discretiation {nCells[l]}')
-        
-    
-        t, c, runtime = run_simulation(nCells[l], polyDeg, polyDegPore[i],nCellsPar, 1)
-        runtime_e.append(runtime)
-        err = 0
-        for k in range(c.shape[1]): #Number of components
-            idxx = f'C{k}'
-            err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
-        maxE_e.append(err)
-        
-        
-        t, c, runtime = run_simulation(nCells[l], polyDeg, polyDegPore[i],nCellsPar, 0)
-        runtime_i.append(runtime)
-        err = 0
-        for k in range(c.shape[1]): #Number of components
-            idxx = f'C{k}'
-            err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
-        maxE_i.append(err)
-        
-        
-        nCellu.append(nCells[l])
-        polyDegPoreu.append(polyDegPore[i])
-        DOF.append(c.shape[1] * nCells[l] * (polyDeg + 1)  + 2*c.shape[1]*nCells[l] * (polyDeg + 1)*(polyDegPore[i]+1))  #3 phases
-
-                  
-convergenceDataDG = pd.DataFrame({'DOF': DOF, 'nCellu': nCellu,'polyDegPoreu': polyDegPoreu,'runtime_e': runtime_e,'maxE_e': maxE_e,'runtime_i': runtime_i,'maxE_i': maxE_i})
-
-
-#Save data in a CSV file
-convergenceDataDG.to_csv('CADETDGConvergence.csv')
+exec(open('../../../benchmark_runner.py').read())
+runCadetDG("GRM", c_analytical, polyDeg, nCells, True, polyDegPore, nCellsPar)

@@ -7,7 +7,7 @@ include(joinpath(@__DIR__, fill("..", 4)..., "include.jl"))
 # Specify number of cells, polynomial degree and number of components 
 nCell =  [2,4,8,16,32,64,128]
 polyDeg = [4,5,6]
-nComp = 4
+nComp = 1
 
 
 # Load semi analytical solution
@@ -40,7 +40,7 @@ function model_setup(nCells, polyDeg, exactInt, analJac=false)
 
 	# Set elements sequentially for unit_001
 	model["root"]["input"]["model"]["unit_001"] = OrderedDict()
-	model["root"]["input"]["model"]["unit_001"]["unit_type"] = "LUMPED_RATE_MODEL_WITH_PORES_DG"
+	model["root"]["input"]["model"]["unit_001"]["unit_type"] = "LUMPED_RATE_MODEL_WITH_PORES"
 	model["root"]["input"]["model"]["unit_001"]["ncomp"] = nComp
 	model["root"]["input"]["model"]["unit_001"]["col_porosity"] = 0.6
 	model["root"]["input"]["model"]["unit_001"]["col_dispersion"] = 1.0e-5

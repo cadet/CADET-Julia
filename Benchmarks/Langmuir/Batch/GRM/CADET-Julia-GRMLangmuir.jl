@@ -40,7 +40,7 @@ function model_setup(nCells, polyDeg, polyDegPore, exactInt, analJac=false)
 
 	# Set elements sequentially for unit_001
 	model["root"]["input"]["model"]["unit_001"] = OrderedDict()
-	model["root"]["input"]["model"]["unit_001"]["unit_type"] = "GENERAL_RATE_MODEL_DG"
+	model["root"]["input"]["model"]["unit_001"]["unit_type"] = "GENERAL_RATE_MODEL"
 	model["root"]["input"]["model"]["unit_001"]["ncomp"] = nComp
 	model["root"]["input"]["model"]["unit_001"]["col_porosity"] = 0.37
 	model["root"]["input"]["model"]["unit_001"]["col_dispersion"] = 5.75e-8

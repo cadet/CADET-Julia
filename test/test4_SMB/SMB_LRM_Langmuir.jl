@@ -49,7 +49,7 @@ function SMB_model(Q2,Q4,QF,QD,QE,QR,ts)
 
     # Set elements sequentially for column - unit_004
     model["root"]["input"]["model"]["unit_004"] = OrderedDict()
-    model["root"]["input"]["model"]["unit_004"]["unit_type"] = "LUMPED_RATE_MODEL_WITHOUT_PORES_DG"
+    model["root"]["input"]["model"]["unit_004"]["unit_type"] = "LUMPED_RATE_MODEL_WITHOUT_PORES"
     model["root"]["input"]["model"]["unit_004"]["ncomp"] = nComp
     model["root"]["input"]["model"]["unit_004"]["col_porosity"] = 0.4
     model["root"]["input"]["model"]["unit_004"]["col_dispersion"] = 1e-4

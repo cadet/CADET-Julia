@@ -16,12 +16,12 @@ from cadet import Cadet
 # Cadet.cadet_path = r'C:\Users\jespfra\Anaconda3\bin\cadet-cli'
 # Cadet.cadet_path = r'C:\Users\Jespfra\AppData\Local\miniconda3\envs\CADETenv\bin\cadet-cli'
 # Cadet.cadet_path = r'C:\Users\pbzit\source\repos\install\bin\cadet-cli'
-Cadet.cadet_path = r'C:\Users\pbzit\source\JanDG_Ma\install\bin\cadet-cli'
+Cadet.cadet_path = r'C:\Users\pbzit\source\JanDG\install\bin\cadet-cli'
 # Cadet.cadet_path = r'C:\Users\pbzit\anaconda3\envs\CADETTest\bin\cadet-cli'
 
 #%% General model options
 
-def model(ncol,polydeg,exactInt):
+def model(ncol,polydeg,exactInt, ode,analJac=1):
     #Setting up the model
     model = Cadet()
 
@@ -187,7 +187,9 @@ def model(ncol,polydeg,exactInt):
     model.save()
 
     #run model
+    start = timeit.default_timer()
     data = model.run()
+    stop = timeit.default_timer()
 
     if data.returncode == 0:
         print("Simulation completed successfully")
@@ -197,98 +199,27 @@ def model(ncol,polydeg,exactInt):
         #Storing data:
         time = model.root.output.solution.solution_times
         c = model.root.output.solution.unit_001.solution_outlet
-        return time,c
+        return time,c, stop - start
         
     else:
         print(data)
-        return [],[]
+        return [],[],[]
 
 
     
-
-#%%
-def run_simulation(ncol, polydeg, is_exact):
-    for _ in range(4):
-        start = timeit.default_timer()
-        t, c = model(ncol, polydeg, is_exact)
-        stop = timeit.default_timer()
-        time.sleep(2)
-        if len(t)>5:
-            return t, c, stop - start
-    return [], [], 0  # Return empty values if simulation couldn't complete in four attempts
-
-
-
-
 
 #Import analytical solution from Jan
 c_analytical = pd.read_csv('Semi-analytical_LRMP_SMA.csv')
 
 
-t,c = model(4,4,0)
+
 
 nCells = [2,4,8,16]
 polyDeg = [4,5,6]
 
-# plt.plot(c[:,0])
-# plt.plot(c[:,1])
-# plt.plot(c_analytical['C0'][:])
-# plt.plot(c_analytical['C1'][:])
-# plt.plot(c_analytical['C2'][:])
-# plt.plot(c_analytical['C3'][:])
 
-
-DOF = []
-nCellu = []
-polyDegu = []
-maxE_e = []
-maxE_i = []
-maxE_e_ode = []
-maxE_i_ode = []
-runtime_e = []
-runtime_i = []
-runtime_e_ode = []
-runtime_i_ode = []
-
-
-
-
-for i in range(0,len(polyDeg)):
-    for l in range(0,len(nCells)):
-        print(f'Polynomial order {polyDeg[i]}')
-        print(f'Column discretiation {nCells[l]}')
-        
-    
-        t, c, runtime = run_simulation(nCells[l], polyDeg[i], True)
-        runtime_e.append(runtime)
-        err = 0
-        for k in range(c.shape[1]): #Number of components
-            idxx = f'C{k}'
-            err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
-        maxE_e.append(err)
-
-
-        t, c, runtime = run_simulation(nCells[l], polyDeg[i], False)
-        runtime_i.append(runtime)
-        err = 0
-        for k in range(c.shape[1]):
-            idxx = f'C{k}'
-            err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
-        maxE_i.append(err)
-     
-
-        nCellu.append(nCells[l])
-        polyDegu.append(polyDeg[i])
-        DOF.append(c.shape[1] * nCells[l] * (polyDeg[i] + 1) * 3 )  # four components, three phases
-    
-    
-    
-                   
-convergenceDataDG = pd.DataFrame({'DOF': DOF, 'nCellu': nCellu,'polyDegu': polyDegu,'runtime_e': runtime_e,'maxE_e': maxE_e,'runtime_i': runtime_i,'maxE_i': maxE_i})
-
-
-#Save data in a CSV file
-convergenceDataDG.to_csv('CADETDGConvergence.csv')
+exec(open('../../../benchmark_runner.py').read())
+runCadetDG("LRMP", c_analytical, polyDeg, nCells, False)
 
 
 

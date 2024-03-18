@@ -31,7 +31,7 @@ model["root"]["input"]["model"]["unit_000"]["sec_001"]["const_coeff"] = [0]
 
 # Set elements sequentially for unit_001
 model["root"]["input"]["model"]["unit_001"] = OrderedDict()
-model["root"]["input"]["model"]["unit_001"]["unit_type"] = "LUMPED_RATE_MODEL_WITHOUT_PORES_DG"
+model["root"]["input"]["model"]["unit_001"]["unit_type"] = "LUMPED_RATE_MODEL_WITHOUT_PORES"
 model["root"]["input"]["model"]["unit_001"]["ncomp"] = nComp
 model["root"]["input"]["model"]["unit_001"]["col_porosity"] = 0.6
 model["root"]["input"]["model"]["unit_001"]["col_dispersion"] = 1e-4
@@ -109,10 +109,3 @@ else
     println("Test unsuccesful - error larger than 1e-5")
 end
 
-using Sundials
-solve_model_dae(
-			columns = columns,
-			switches = switches,
-			solverOptions = solverOptions, 
-			outlets = outlets, # Defaults to (0,) as output is also written to units 
-			)

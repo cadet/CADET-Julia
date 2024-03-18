@@ -76,7 +76,7 @@ function create_units(model::Union{Dict, OrderedDict})
                 push!(outlets, outlet_instance)
                 units[unit_name] = outlet_instance
 
-            elseif unit_type == "LUMPED_RATE_MODEL_WITHOUT_PORES_DG"
+            elseif unit_type == "LUMPED_RATE_MODEL_WITHOUT_PORES"
                 # Create column instance
                 # Replace the following line with your column instantiation logic
                 column_instance = LRM(nComp = value["ncomp"], 
@@ -97,7 +97,7 @@ function create_units(model::Union{Dict, OrderedDict})
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
 
-			elseif unit_type == "LUMPED_RATE_MODEL_WITH_PORES_DG"
+			elseif unit_type == "LUMPED_RATE_MODEL_WITH_PORES"
                 # Create column instance
                 column_instance = LRMP(nComp = value["ncomp"], 
                                         colLength = value["col_length"], 
@@ -120,7 +120,7 @@ function create_units(model::Union{Dict, OrderedDict})
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
 
-			elseif unit_type == "GENERAL_RATE_MODEL_DG"
+			elseif unit_type == "GENERAL_RATE_MODEL"
                 # Create column instance
                 # Replace the following line with your column instantiation logic
                 column_instance = GRM(nComp = value["ncomp"], 
