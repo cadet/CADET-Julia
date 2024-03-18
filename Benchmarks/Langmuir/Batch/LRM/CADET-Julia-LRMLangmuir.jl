@@ -5,7 +5,7 @@
 include(joinpath(@__DIR__, fill("..", 4)..., "include.jl"))
 
 # Specify number of cells, polynomial degree and number of components 
-nCell =  [2,4,8,16,32]
+nCell =  [2,4,8,16,32,64,128]
 polyDeg = [4,5,6]
 nComp = 2
 
@@ -41,7 +41,7 @@ function model_setup(nCells, polyDeg, exactInt, analJac=false)
 
 	# Set elements sequentially for unit_001
 	model["root"]["input"]["model"]["unit_001"] = OrderedDict()
-	model["root"]["input"]["model"]["unit_001"]["unit_type"] = "LUMPED_RATE_MODEL_WITHOUT_PORES_DG"
+	model["root"]["input"]["model"]["unit_001"]["unit_type"] = "LUMPED_RATE_MODEL_WITHOUT_PORES"
 	model["root"]["input"]["model"]["unit_001"]["ncomp"] = nComp
 	model["root"]["input"]["model"]["unit_001"]["col_porosity"] = 0.4
 	model["root"]["input"]["model"]["unit_001"]["col_dispersion"] = [1e-4, 1e-4]
@@ -109,4 +109,4 @@ end
 evaluate_convergence(QNDF(autodiff=false), c_analytical, nComp, nCell, polyDeg, 1, "LRM", @__DIR__)
 
 # Evaluate ODe solvers and save results in ODETests folder 
-[evaluate_ODEsolvers(c_analytical, nComp, nCell, [polyDeg[1]], 1, "LRM", joinpath(@__DIR__,"ODETests"), true) for _ in 1:2]
+[evaluate_ODEsolvers(c_analytical, nComp, nCell, [polyDeg[1]], 1, "LRM", joinpath(@__DIR__,"ODETests")) for _ in 1:2]

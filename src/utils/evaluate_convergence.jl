@@ -72,6 +72,7 @@ function evaluate_convergence(alg, c_analytical, nComp, nCell, polyDeg, polyDegP
 	
 	# Create a DataFrame with the details and output
 	df1 = DataFrame(outlets1[1].solution_outlet,:auto)
+	df1[!,"time"] = outlets1[1].solution_times
 	df1[!, "nCell1"] .= nCell[1]
 	df1[!, "polyDeg1"] .= polyDeg[1]
 	df1[!, "polyDegPore1"] .= polyDegPore[1]

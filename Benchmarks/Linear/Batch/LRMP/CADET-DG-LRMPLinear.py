@@ -21,7 +21,8 @@ Cadet.cadet_path = r'C:\Users\pbzit\source\JanDG\install\bin\cadet-cli'
 #%% General model options
 
 
-def model(ncol,polydeg,exactInt,ode):
+def model(ncol,polydeg,exactInt,ode,analJac=1):
+    
     #Setting up the model
     model = Cadet()
 
@@ -83,7 +84,7 @@ def model(ncol,polydeg,exactInt,ode):
     model.root.input.model.unit_002.unit_type = 'OUTLET'
     model.root.input.model.unit_002.ncomp = n_comp 
 
-    #%% Inlet options, flowrate etc.
+    #% Inlet options, flowrate etc.
     #The number of section relates to how the simulation is split.
     #If having a pulse injection, it should be split in the # of changes
 
@@ -118,7 +119,7 @@ def model(ncol,polydeg,exactInt,ode):
     # Solution times
     model.root.input.solver.user_solution_times = np.linspace(0, 130, (130)+1)
 
-    #%% Solver options: spatial and time
+    #% Solver options: spatial and time
 
     #Spatial
     ### Grid cells in column and particle: the most important ones - ensure grid-independent solutions
@@ -185,107 +186,39 @@ def model(ncol,polydeg,exactInt,ode):
     model.save()
 
     #run model
+    start = timeit.default_timer()
     data = model.run()
+    stop = timeit.default_timer()
+    
+    time.sleep(3)
 
     if data.returncode == 0:
         print("Simulation completed successfully")
+        
         model.load()   
         
         #% data treatment
         #Storing data:
-        time = model.root.output.solution.solution_times
+        times = model.root.output.solution.solution_times
         c = model.root.output.solution.unit_001.solution_outlet
-        return time,c
+        return times,c, stop - start
         
     else:
         print(data)
-        return [],[]
+        return [],[],[]
 
 
 
 #%%
-def run_simulation(ncol, polydeg, is_exact, is_ode):
-    for _ in range(4):
-        start = timeit.default_timer()
-        t, c = model(ncol, polydeg, is_exact, is_ode)
-        stop = timeit.default_timer()
-        time.sleep(2)
-        if len(t)>5:
-            return t, c, stop - start
-    return [], [], 0  # Return empty values if simulation couldn't complete in four attempts
+
 
 #Import analytical solution from Jan
-c_analytical = pd.read_csv('Semi-analytical_LRMP_Langmuir.csv')
+c_analytical = pd.read_csv('Semi-analytical_LRMP_Linear.csv')
 
 
-t,c = model(20,4,1,1)
-
-nCells = [4,8,16,32,64,128]
+nCells = [2,4,8,16,32,64,128]
 polyDeg = [4,5,6]
 
-plt.plot(c[:,0])
-plt.plot(c_analytical['C0'][:])
-
-DOF = []
-nCellu = []
-polyDegu = []
-maxE_e = []
-maxE_i = []
-maxE_e_ode = []
-maxE_i_ode = []
-runtime_e = []
-runtime_i = []
-runtime_e_ode = []
-runtime_i_ode = []
-
-for i in range(0,len(polyDeg)):
-    for l in range(0,len(nCells)):
-        print(f'Polynomial order {polyDeg[i]}')
-        print(f'Column discretiation {nCells[l]}')
-        
-    
-        t, c, runtime = run_simulation(nCells[l], polyDeg[i], True, 0)
-        runtime_e.append(runtime)
-        err = 0
-        for k in range(c.shape[1]): #Number of components            
-            idxx = f'C{k}'
-            err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
-        maxE_e.append(err)
-
-        t, c, runtime = run_simulation(nCells[l], polyDeg[i], False, 0)
-        runtime_i.append(runtime)
-        err = 0
-        for k in range(c.shape[1]): #Number of components            
-            idxx = f'C{k}'
-            err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
-        maxE_i.append(err)
-
-        t, c, runtime = run_simulation(nCells[l], polyDeg[i], True, 1)
-        runtime_e_ode.append(runtime)
-        err = 0
-        for k in range(c.shape[1]): #Number of components            
-            idxx = f'C{k}'
-            err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
-        maxE_e_ode.append(err)
-
-        t, c, runtime = run_simulation(nCells[l], polyDeg[i], False, 1)
-        runtime_i_ode.append(runtime)
-        err = 0
-        for k in range(c.shape[1]): #Number of components            
-            idxx = f'C{k}'
-            err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
-        maxE_i_ode.append(err)
-
-        nCellu.append(nCells[l])
-        polyDegu.append(polyDeg[i])
-        DOF.append(c.shape[1] * nCells[l] * (polyDeg[i] + 1) * 3)  # Two components, two phases
-       
-    
-                   
-convergenceDataDG = pd.DataFrame({'DOF': DOF, 'nCellu': nCellu,'polyDegu': polyDegu,'runtime_e': runtime_e,'maxE_e': maxE_e,'runtime_i': runtime_i,'maxE_i': maxE_i,
-                      'runtime_e_ode': runtime_e_ode,'maxE_e_ode': maxE_e_ode,'runtime_i_ode': runtime_i_ode,'maxE_i_ode': maxE_i_ode,})
-
-
-#Save data in a CSV file
-convergenceDataDG.to_csv('CADETDGConvergence.csv')
+exec(open('../../../benchmark_runner.py').read())
+runCadetDG("LRMP", c_analytical, polyDeg, nCells, True)
 

@@ -174,7 +174,9 @@ def model(ncol,ncolPore):
     model.save()
 
     #run model
+    start = timeit.default_timer()
     data = model.run()
+    stop = timeit.default_timer()
 
     if data.returncode == 0:
         print("Simulation completed successfully")
@@ -189,7 +191,7 @@ def model(ncol,ncolPore):
     time = model.root.output.solution.solution_times
     c = model.root.output.solution.unit_001.solution_outlet
      
-    return time,c
+    return time,c,stop - start
 
 #Import analytical solution from Jan
 c_analytical = pd.read_csv('Semi-analytical_GRM_Langmuir.csv')
@@ -203,15 +205,17 @@ DOF = []
 c1 = []
 k = [4,5,6,7,8,9]
 for i in range(len(k)):
-    start = timeit.default_timer()
-    t,c = model(2**k[i],2**(k[i]-2))
-    stop = timeit.default_timer() 
-    runtime.append(stop-start)
+    rtimes = [0,0,0]
+    for l in range(3):
+        t,c,rtime = model(2**k[i],2**(k[i]-2))
+        rtimes[l] = rtime
+
+    runtime.append(min(rtimes))
     print(i)
-    err = 0
-    for l in range(c.shape[1]): #Number of components
-        idxx = f'C{l}'
-        err = max([err,abs(c[:, l] - c_analytical[idxx][:]).max()])
+    
+    for k in range(c.shape[1]): #Number of components
+        idxx = f'C{k}'
+        err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
     maxE_e.append(err)
     DOF.append(c.shape[1]*2**k[i] + c.shape[1]*2*2**(k[i]-2)) 
 

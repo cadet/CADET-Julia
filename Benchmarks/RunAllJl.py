@@ -25,19 +25,19 @@ def run_julia_script(script_path):
 # Batch Linear scripts
 # run_julia_script("Linear/Batch/LRM/CADET-Julia-LRMLinear.jl")
 # run_julia_script("Linear/Batch/LRMP/CADET-Julia-LRMPLinear.jl")
-run_julia_script("Linear/Batch/GRM/CADET-Julia-GRMLinear.jl")
+# run_julia_script("Linear/Batch/GRM/CADET-Julia-GRMLinear.jl")
 
 
 # Batch Langmuir scripts
-# run_julia_script("Langmuir/Batch/LRM/CADET-Julia-LRMLangmuir.jl")
-# run_julia_script("Langmuir/Batch/LRMP/CADET-Julia-LRMPLangmuir.jl")
+run_julia_script("Langmuir/Batch/LRM/CADET-Julia-LRMLangmuir.jl")
+run_julia_script("Langmuir/Batch/LRMP/CADET-Julia-LRMPLangmuir.jl")
 # run_julia_script("Langmuir/Batch/GRM/CADET-Julia-GRMLangmuir.jl")
 
 
 
 # Batch SMA scripts
-run_julia_script("SMA/Batch/LRM/CADET-Julia-LRMSMA.jl")
-run_julia_script("SMA/Batch/LRMP/CADET-Julia-LRMPSMA.jl")
-run_julia_script("SMA/Batch/GRM/CADET-Julia-GRMSMA.jl")
+# run_julia_script("SMA/Batch/LRM/CADET-Julia-LRMSMA.jl")
+# run_julia_script("SMA/Batch/LRMP/CADET-Julia-LRMPSMA.jl")
+# run_julia_script("SMA/Batch/GRM/CADET-Julia-GRMSMA.jl")
 
 

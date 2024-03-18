@@ -181,7 +181,9 @@ def model(ncol,ode):
     model.save()
 
     #run model
+    start = timeit.default_timer()
     data = model.run()
+    stop = timeit.default_timer()
 
     if data.returncode == 0:
         print("Simulation completed successfully")
@@ -196,7 +198,7 @@ def model(ncol,ode):
     time = model.root.output.solution.solution_times
     c = model.root.output.solution.unit_001.solution_outlet
 
-    return time,c
+    return time,c,stop - start
 #%%
 #Import analytical solution from Jan
 c_analytical = pd.read_csv('Semi-analytical_LRM_Langmuir.csv')
@@ -215,20 +217,35 @@ runtime_ode = []
 c1 = []
 ncols = [4096,2048,1024,512,256,128,64,32,16,8]
 DOF = []
+err = 0
 error = np.zeros(len(ncols))
 error_ode = np.zeros(len(ncols))
 for l in range(0,len(ncols)):
-    start = timeit.default_timer()
-    t,c = model(ncols[l],0)
-    stop = timeit.default_timer() 
-    runtime.append(stop-start)
-    error[l] = max([abs(c[:,0] - c_analytical['C0'][:]).max(), abs(c[:,1] - c_analytical['C1'][:]).max()])
+    err = 0
+    rtimes = [0,0,0]
+    for i in range(3):
+        t,c,rtime = model(ncols[l],0)
+        rtimes[l] = rtime
+
+    runtime.append(min(rtimes))
+    for k in range(c.shape[1]): #Number of components
+        idxx = f'C{k}'
+        err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
+    error[l] = err
     
-    start = timeit.default_timer()
-    t,c = model(ncols[l],1)
-    stop = timeit.default_timer() 
-    runtime_ode.append(stop-start)
-    error_ode[l] = max([abs(c[:,0] - c_analytical['C0'][:]).max(), abs(c[:,1] - c_analytical['C1'][:]).max()])
+    
+    err = 0
+    rtimes = [0,0,0]
+    for i in range(3):
+        t,c,rtime = model(ncols[l],1)
+        rtimes[l] = rtime
+
+    runtime_ode.append(min(rtimes))
+    for k in range(c.shape[1]): #Number of components
+        idxx = f'C{k}'
+        err = max([err,abs(c[:, k] - c_analytical[idxx][:]).max()])
+    error_ode[l] = err
+
     
     print(ncols[l])
     DOF.append(2*ncols[l]*2) #two components, two phases

@@ -179,7 +179,9 @@ def model(ncol):
     model.save()
 
     #run model
+    start = timeit.default_timer()
     data = model.run()
+    stop = timeit.default_timer()
 
     if data.returncode == 0:
         print("Simulation completed successfully")
@@ -196,7 +198,7 @@ def model(ncol):
     
 
      
-    return time,c
+    return time,c, stop - start
 
 #Import analytical solution from Jan
 c_analytical = pd.read_csv('Semi-analytical_LRMP_Langmuir.csv')
@@ -214,12 +216,15 @@ c1 = []
 ncols = [2048,1024,512,256,128,64,32,16,8]
 error = np.zeros(len(ncols))
 err = 0
+
 for l in range(0,len(ncols)):
-    start = timeit.default_timer()
-    t,c = model(ncols[l])
-    stop = timeit.default_timer() 
-    runtime.append(stop-start)
-    runtime[l] = stop-start
+    err = 0
+    rtimes = [0,0,0]
+    for i in range(3):
+        t,c,rtime = model(ncols[l])
+        rtimes[i] = rtime
+
+    runtime.append(min(rtimes))
     print(ncols[l])
     for k in range(c.shape[1]): #Number of components
         idxx = f'C{k}'
