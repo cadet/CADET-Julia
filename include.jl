@@ -13,6 +13,7 @@ using ConvDispOperatorDG
 using DifferentialEquations
 using SparseArrays # To use sparse matrices 
 using DataStructures # To get OrderedDict
+using HDF5 # To read HDF5 files
 using SpecialFunctions,LinearAlgebra
 using Sundials
 using Plots
@@ -24,7 +25,7 @@ using IncompleteLU
 include(joinpath(rel_path,"SRC\\isotherms\\binding_base.jl"))
 include(joinpath(rel_path,"SRC\\DG\\model_base.jl"))
 include(joinpath(rel_path,"SRC\\utils\\connections.jl"))
-include(joinpath(rel_path,"SRC\\utils\\dictionary_reader.jl"))
+include(joinpath(rel_path,"SRC\\utils\\file_reader.jl"))
 include(joinpath(rel_path,"SRC\\utils\\repeat_functions.jl"))
 include(joinpath(rel_path,"SRC\\utils\\initial_condition_specification.jl"))
 include(joinpath(rel_path,"SRC\\utils\\solver_utils.jl"))

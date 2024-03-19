@@ -6,7 +6,7 @@ include(joinpath(@__DIR__, fill("..", 4)..., "include.jl"))
 # Specify number of cells, polynomial degree and number of components 
 nCell =  [1,2,4,8]
 polyDeg = [4]
-polyDegPore = [4,5,6,8,10]
+polyDegPore = [4,6,8,10]
 nComp = 4
 
 # Load semi analytical solution
