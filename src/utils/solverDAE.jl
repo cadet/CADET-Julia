@@ -37,14 +37,15 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 			# determine static jacobian and allocation matrices that are stored in p_jac
 			p_jac = jac_static(columns[1],switches.ConnectionInstance.u_tot[switches.switchSetup[i], 1], p)
 			p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
-			analytical_jac = analytical_jac! #refers to the function
+			analytical_jac = analytical_jac_dae! #refers to the function
 		end
 
 		# If jacobian prototype, compute at every section time as switches might change Jacobian 
 		if solverOptions.prototypeJacobian == true
 			
-			# determine jacobian prototype using finite differences - saves compilation time but perhaps change
-			jacProto = sparse(jac_finite_diff_dae(problemDAE!,p,solverOptions.x0 .+ 1e-6, 1e-8))
+			# determine jacobian prototype
+			jacProto = sparse(zeros(length(x0),length(x0)))
+			analytical_jac(jacProto, solverOptions.x0 .+ 1e-6, solverOptions.x0 .+ 1e-6, p, 1e-7, 0.0)
 			
 			# set dq0dq to zero when computing SMA w. formulation 1 as dq/dt is not needed to be computed
 			# This makes it slightly faster
@@ -58,12 +59,13 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 		
 		# Update dx0 for the DAE for inlet 
 		initialize_dae!(dx0, x0, p)
-		
+
 		# update the tspan and the inlets through i to the system
 		tspan = (switches.section_times[i], switches.section_times[i+1])
-		fun = DAEFunction(problemDAE!; jac_prototype = jacProto ) #jac_prototype = jacProto, jac = analytical_jac
+		fun = DAEFunction(problemDAE!; jac = analytical_jac, jac_prototype = jacProto)
 		prob = DAEProblem(fun, dx0, x0, (0.0, tspan[2]-tspan[1]), p, differential_vars = differential_vars)
 		sol = solve(prob, alg, saveat=solverOptions.solution_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol) 
+
 		
 		#New initial conditions
 		x0 = sol.u[end]
