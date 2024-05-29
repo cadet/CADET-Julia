@@ -235,7 +235,7 @@ function create_units(model::Union{Dict, OrderedDict})
                         reltol = model["root"]["input"]["solver"]["time_integrator"]["reltol"], 
                         solution_times = collect(model["root"]["input"]["solver"]["user_solution_times"]),
                         # dt = 1.0,
-                        prototypeJacobian = true,
+                        prototypeJacobian = haskey(model["root"]["input"]["model"][columnIDs[1]]["discretization"], "use_prototype_jacobian") ? model["root"]["input"]["model"][columnIDs[1]]["discretization"]["use_prototype_jacobian"] : true,
                         analyticalJacobian = haskey(model["root"]["input"]["model"][columnIDs[1]]["discretization"], "use_analytic_jacobian") ? model["root"]["input"]["model"][columnIDs[1]]["discretization"]["use_analytic_jacobian"] : false
                         )
     
@@ -245,7 +245,7 @@ end
 
 function get_bind(value,bindstride)
 	# If a kinetic constant is specified 
-	kkin = haskey(value, "kkin") ? value["kkin"] : 1.0
+	kkin = haskey(value["adsorption"], "kkin") ? value["adsorption"]["kkin"] : 1.0
     ads_model = haskey(value,"adsorption_model") ? value["adsorption_model"] : value["ADSORPTION_MODEL"]
     is_kinetic =  haskey(value["adsorption"],"is_kinetic") ? value["adsorption"]["is_kinetic"] : convert(Bool,value["adsorption"]["IS_KINETIC"])
 
