@@ -156,9 +156,9 @@ mutable struct LRM <: ModelBase
 	Fc::Float64
 	Fjac::Float64
 	cpp::Vector{Float64}
-    RHS_q::Vector{Float64}
+    RHS_q::Vector{Real}
     qq::Vector{Float64}
-	RHS::Vector{Float64}
+	RHS::Vector{Real}
 	solution_outlet::Matrix{Float64}
 	solution_times::Vector{Float64}
 	bind::bindingBase
@@ -180,9 +180,9 @@ mutable struct LRM <: ModelBase
 		Fc = (1-eps_c)/eps_c
 		Fjac = Fc # The phase ratio used for Jacobian i.e., dcdc = Fjac * dqdc
 		cpp = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
-		RHS_q = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
+		RHS_q = zeros(Real, ConvDispOpInstance.nPoints * nComp)
 		qq = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
-		RHS = zeros(Float64, adsStride + 2*nComp*bindStride)
+		RHS = zeros(Real, adsStride + 2*nComp*bindStride)
 		cIn = 0.0
 	
 		# if the axial dispersion is specified for a single component, assume they are the same for all components
