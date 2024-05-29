@@ -33,8 +33,8 @@ include(joinpath(rel_path,"SRC\\utils\\solver.jl"))
 include(joinpath(rel_path,"SRC\\utils\\solverDAE.jl"))
 include(joinpath(rel_path,"SRC\\isotherms\\jacobians.jl"))
 include(joinpath(rel_path,"SRC\\DG\\conv_disp_operator_dg_jac.jl"))
-include(joinpath(rel_path,"SRC\\utils\\evaluate_convergence.jl"))
-include(joinpath(rel_path,"SRC\\utils\\evaluate_ODEsolvers.jl"))
+include(joinpath(rel_path,"SRC\\OCFEM\\OCFEM.jl"))
+include(joinpath(rel_path,"SRC\\OCFEM\\model_base_ocfem.jl"))
 
 
 
