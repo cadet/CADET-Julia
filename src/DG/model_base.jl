@@ -150,6 +150,7 @@ mutable struct LRM <: ModelBase
 	#Determined properties 
 	bindStride::Int64
 	adsStride::Int64
+	unitStride::Int64
 
 	# Allocation vectors and matrices
     idx::UnitRange{Int64}
@@ -173,6 +174,7 @@ mutable struct LRM <: ModelBase
 		# The bind stride is the stride between each component for binding. For LRM, it is nPoints=(polyDeg + 1) * nCells
 		bindStride = ConvDispOpInstance.nPoints
 		adsStride = 0  #stride to guide to liquid adsorption concentrations i.e., cpp
+		unitStride = adsStride + bindStride*nComp*2
 
 
 		# allocation vectors and matrices
@@ -208,7 +210,7 @@ mutable struct LRM <: ModelBase
 					)
 		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, colLength, d_ax, eps_c, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, idx, Fc, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times,bind)
+		new(nComp, colLength, d_ax, eps_c, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, unitStride, idx, Fc, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
 	end
 end
 
@@ -284,6 +286,7 @@ mutable struct LRMP <: ModelBase
 	#Determined properties 
 	bindStride::Int64
 	adsStride::Int64
+	unitStride::Int64
 
 	# Allocation vectors and matrices
     idx::UnitRange{Int64}
@@ -308,6 +311,7 @@ mutable struct LRMP <: ModelBase
 		# The bind stride is the stride between each component for binding. For LRM, it is nPoints=(polyDeg + 1) * nCells
 		bindStride = ConvDispOpInstance.nPoints
 		adsStride = nComp*ConvDispOpInstance.nPoints  #stride to guide to liquid adsorption concentrations i.e., cpp
+		unitStride = adsStride + bindStride*nComp*2
 
 
 		# allocation vectors and matrices
@@ -351,7 +355,7 @@ mutable struct LRMP <: ModelBase
 
 		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
+		new(nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, unitStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
 	end
 end
 
@@ -428,6 +432,7 @@ mutable struct GRM <: ModelBase
 	#Determined properties 
 	bindStride::Int64
 	adsStride::Int64
+	unitStride::Int64
 
 	# Allocation vectors and matrices
     idx::UnitRange{Int64}
@@ -493,6 +498,7 @@ mutable struct GRM <: ModelBase
 		# The bind stride is the stride between each component for binding. For LRM, it is nPoints=(polyDeg + 1) * nCells
 		bindStride = ConvDispOpInstance.nPoints*PoreOpInstance.nNodesPore
 		adsStride = nComp*ConvDispOpInstance.nPoints  #stride to guide to liquid adsorption concentrations i.e., cpp
+		unitStride = adsStride + bindStride*nComp*2
 		
 		# vector allocations
 		cpp = zeros(Float64, PoreOpInstance.stridePore)
@@ -517,13 +523,13 @@ mutable struct GRM <: ModelBase
 					)
 		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Rc, Dp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, polyDegPore, ConvDispOpInstance, PoreOpInstance, bindStride, adsStride, idx, idx_p, idx_q, Fc, Fp, Fjac, Jr, invRi, cpp, RHS_q, qq, solution_outlet, solution_times, bind)
+		new(nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Rc, Dp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, polyDegPore, ConvDispOpInstance, PoreOpInstance, bindStride, adsStride, unitStride, idx, idx_p, idx_q, Fc, Fp, Fjac, Jr, invRi, cpp, RHS_q, qq, solution_outlet, solution_times, bind)
 	end
 end
 
 
 
-# Define a function to compute the transport term for the LRMP
+# Define a function to compute the transport term for the GRM
 function compute_transport!(RHS, RHS_q, cpp, x, m::GRM, t, section, sink, switches, idx_units)
 	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted

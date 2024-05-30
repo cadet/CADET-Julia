@@ -15,6 +15,9 @@ function solve_model_hybrid(; columns, switches::Switches, solverOptions, hybrid
 	# To have outlets as a tuple
 	if typeof(columns)<:ModelBase
 		columns = (columns,)
+		if length(columns)>1
+			throw("Multiple columns not supported for hybrid models. Yet.")
+		end
 	end
 	
 	# To have outlets as a tuple
