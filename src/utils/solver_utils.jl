@@ -41,7 +41,7 @@ mutable struct SolverCache
 		# Determining the indices for when a new unit is starting and setting up the solution_outlet matrices
 		idx_units = zeros(Int64, nColumns)
 		for i = 2:nColumns 
-			idx_units[i] = idx_units[i-1] + columns[i-1].adsStride +columns[i-1].bindStride*columns[i-1].nComp*2
+			idx_units[i] = idx_units[i-1] + columns[i-1].unitStride
 		end
 		
 		# Solution times 
@@ -53,7 +53,7 @@ mutable struct SolverCache
 
 		x0len = 0
 		for i = 1:nColumns
-			x0len += columns[i].adsStride + columns[i].bindStride*columns[i].nComp*2
+			x0len += columns[i].unitStride
 			
 			# Constructing the solution outlet for each unit 
 			columns[i].solution_outlet = -ones(Float64,length(solution_times),columns[i].nComp)
@@ -81,10 +81,14 @@ mutable struct SolverCache
 			x0 = zeros(Float64,x0len)
 
 			for i = 1: nColumns
-				
-				x0[1 + idx_units[i] : idx_units[i] + columns[i].ConvDispOpInstance.nPoints * columns[i].nComp] = columns[i].c0 
-				x0[1 + idx_units[i] + columns[i].adsStride : idx_units[i] + columns[i].adsStride + columns[i].bindStride * columns[i].nComp] =columns[i].cp0 
-				x0[1 + idx_units[i] + columns[i].adsStride + columns[i].bindStride*columns[i].nComp : idx_units[i] + columns[i].adsStride + columns[i].bindStride * columns[i].nComp * 2] = columns[i].q0
+			
+				if typeof(columns[i]) == cstr
+					x0[1 + idx_units[i] : idx_units[i] + columns[i].unitStride] = columns[i].c0
+				else
+					x0[1 + idx_units[i] : idx_units[i] + columns[i].ConvDispOpInstance.nPoints * columns[i].nComp] = columns[i].c0 
+					x0[1 + idx_units[i] + columns[i].adsStride : idx_units[i] + columns[i].adsStride + columns[i].bindStride * columns[i].nComp] = columns[i].cp0 
+					x0[1 + idx_units[i] + columns[i].adsStride + columns[i].bindStride*columns[i].nComp : idx_units[i] + columns[i].adsStride + columns[i].bindStride * columns[i].nComp * 2] = columns[i].q0
+				end
 			end 
 		elseif length(x0) == x0len # if the whole x0 is specified 
 			nothing 
@@ -115,7 +119,11 @@ mutable struct SolverCache
 		# Fill in initial conditions in solution_outlet matrices
 		for i=1:nColumns
 			for j=1:columns[1].nComp # Storing initial conditions in output matrix
-				columns[i].solution_outlet[1,j] = x0[j*columns[i].ConvDispOpInstance.nPoints + idx_units[i]]
+				if typeof(columns[i]) == cstr
+					columns[i].solution_outlet[1,j] = x0[j + idx_units[i]]
+				else
+					columns[i].solution_outlet[1,j] = x0[j*columns[i].ConvDispOpInstance.nPoints + idx_units[i]]
+				end
 			end
 			append!(columns[i].solution_times, 0)
 		end
@@ -125,7 +133,11 @@ mutable struct SolverCache
 			for i in eachindex(outlets)
 				if outlets[i].idx_outlet != [-1]
 					for j=1:columns[1].nComp # Storing initial conditions in output matrix
-						outlets[i].solution_outlet[1,j] = x0[j*columns[outlets[i].idx_unit[switches.switchSetup[1]]].ConvDispOpInstance.nPoints + outlets[i].idx_outlet[switches.switchSetup[i]]]
+						if typeof(columns[outlets[i].idx_unit[switches.switchSetup[i]]]) == cstr
+							outlets[i].solution_outlet[1,j] = x0[j + idx_units[i]]
+						else
+							outlets[i].solution_outlet[1,j] = x0[j*columns[outlets[i].idx_unit[switches.switchSetup[1]]].ConvDispOpInstance.nPoints + outlets[i].idx_outlet[switches.switchSetup[i]]]
+						end
 					end
 					append!(outlets[i].solution_times, 0)
 				end

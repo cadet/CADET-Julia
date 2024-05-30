@@ -174,7 +174,27 @@ mutable struct Connection
 		switches.ConnectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
 		for j in 1:model.nComp 
 			# The following line assumes all transport models have the same discretization! 
-			switches.ConnectionInstance.idx_connect[switch, sink, j] = model.bindStride + (j-1) * model.bindStride  + (columnNumber-1) * (model.adsStride + 2*model.bindStride*model.nComp)
+			switches.ConnectionInstance.idx_connect[switch, sink, j] = model.bindStride + (j-1) * model.bindStride + switches.idx_units[columnNumber]
+		end
+		
+	end
+
+	# If a cstr is specified as input i.e., in series 
+	function Connection(switches, switch::Int64, section::Int64, source::Tuple{Int64,cstr}, sink::Int64, u::Float64)
+		# Unpack source 
+		columnNumber = source[1]
+		model = source[2]
+
+		# The switchSetup is set to a section 
+		switches.switchSetup[section] = switch
+		
+		# Here the matrix should be edited
+		# edit u_total, Q and C_connect 
+		switches.ConnectionInstance.u_unit[switch, sink] = u
+		switches.ConnectionInstance.u_tot[switch, sink] = switches.ConnectionInstance.u_inlet[switch, sink] + switches.ConnectionInstance.u_unit[switch, sink]
+		switches.ConnectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
+		for j in 1:model.nComp 
+			switches.ConnectionInstance.idx_connect[switch, sink, j] = j + switches.idx_units[columnNumber]
 		end
 		
 	end
@@ -225,15 +245,16 @@ mutable struct Switches
 	nSwitches::Int64
 	switchSetup::Vector{Int64}
 	
-	
+
 	ConnectionInstance::Connection 
+	idx_units::Vector{Int64}
 	
-	function Switches(; nSections::Int64, section_times::Vector{Float64}, nSwitches::Int64, nColumns::Int64, nComp::Int64)
+	function Switches(; nSections::Int64, section_times::Vector{Float64}, nSwitches::Int64, nColumns::Int64, nComp::Int64, idx_units::Vector{Int64})
 	
 		# Establish default zero configuration
 		ConnectionInstance = Connection(nSections, nSwitches, nComp, nColumns) # connection(nSections = nSections, nComp = nComp, nColumns = nColumns)
 		switchSetup = -ones(Int64,nSections)
 	
-		new(nSections, section_times, nSwitches, switchSetup, ConnectionInstance)
+		new(nSections, section_times, nSwitches, switchSetup, ConnectionInstance, idx_units)
 	end
 end

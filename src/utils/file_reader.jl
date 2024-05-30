@@ -9,6 +9,9 @@ function create_units(model::Union{Dict, OrderedDict})
     # When a column is added, preserve the number and ID 
     columnIDs = String[] #
     columnNumber = Int64[]
+    prototypeJacobian = true
+    analyticalJacobian = false
+
 
     for (key, value) in model["root"]["input"]["model"]
         if occursin("unit_", key)
@@ -145,21 +148,40 @@ function create_units(model::Union{Dict, OrderedDict})
                 push!(columnNumber, length(columnNumber)+1)
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
-
+				
+				
+			elseif unit_type == "CSTR"
+				column_instance = cstr(; nComp = value["ncomp"], 
+										V = value["volume"],
+										c0 = haskey(value, "init_c") ? value["init_c"] : 0
+										)
+				push!(columns, column_instance)
+                # Assign ID and number in columns
+                push!(columnNumber, length(columnNumber)+1)
+                push!(columnIDs, unit_name)
+                units[unit_name] = column_instance
+				
             else
                 println("Unknown unit type: $unit_type")
             end
         end
     end
 
+    # Determining the indices for when a new unit is starting
+    nColumns = length(columns)
+    idx_units = zeros(Int64, nColumns)
+    for i = 2:nColumns 
+        idx_units[i] = idx_units[i-1] + columns[i-1].unitStride
+    end
+
 	# Setting up sections and switch times 
-	
 	switches = Switches(
 		nSections =  model["root"]["input"]["solver"]["sections"]["nsec"], 
 		section_times = model["root"]["input"]["solver"]["sections"]["section_times"],
         nSwitches = model["root"]["input"]["model"]["connections"]["nswitches"],
-		nColumns = length(columns), # 
-		nComp = model["root"]["input"]["model"]["unit_000"]["ncomp"]
+		nColumns = nColumns, # 
+		nComp = model["root"]["input"]["model"]["unit_000"]["ncomp"],
+        idx_units = idx_units
 		)
 
     for i = 0:model["root"]["input"]["model"]["connections"]["nswitches"]-1 #i = 0
@@ -195,7 +217,20 @@ function create_units(model::Union{Dict, OrderedDict})
                 idx = findfirst(x -> x == sinkID, columnIDs)
                 sink = columnNumber[idx]
                 
-                if typeof(source)<:ModelBase
+                if typeof(source)<:ModelBase || typeof(source)<:cstr
+                    idx = findfirst(x -> x == sourceID, columnIDs)
+                    source = (columnNumber[idx],source)
+                end
+            end
+			
+			if typeof(sink)<:cstr # if sink is cstr 
+                u = connectionMatrix[j,5]
+
+                # As sink is a cstr, the unit number is needed 
+                idx = findfirst(x -> x == sinkID, columnIDs)
+                sink = columnNumber[idx]
+                
+                if typeof(source)<:ModelBase || typeof(source)<:cstr
                     idx = findfirst(x -> x == sourceID, columnIDs)
                     source = (columnNumber[idx],source)
                 end
@@ -226,6 +261,20 @@ function create_units(model::Union{Dict, OrderedDict})
         end  
     end  
 
+    # find discretization options
+    for (key, value) in model["root"]["input"]["model"]
+        if haskey(value, "discretization")
+            if haskey(value["discretization"], "use_prototype_jacobian")
+                prototypeJacobian = value["discretization"]["use_prototype_jacobian"]
+            end 
+            if haskey(value["discretization"], "use_analytic_jacobian")
+                analyticalJacobian = value["discretization"]["use_analytic_jacobian"]
+            end
+        end
+    end
+
+
+
     # Solver options 
     solverOptions = SolverCache(
                         columns = Tuple(columns), 
@@ -235,8 +284,8 @@ function create_units(model::Union{Dict, OrderedDict})
                         reltol = model["root"]["input"]["solver"]["time_integrator"]["reltol"], 
                         solution_times = collect(model["root"]["input"]["solver"]["user_solution_times"]),
                         # dt = 1.0,
-                        prototypeJacobian = haskey(model["root"]["input"]["model"][columnIDs[1]]["discretization"], "use_prototype_jacobian") ? model["root"]["input"]["model"][columnIDs[1]]["discretization"]["use_prototype_jacobian"] : true,
-                        analyticalJacobian = haskey(model["root"]["input"]["model"][columnIDs[1]]["discretization"], "use_analytic_jacobian") ? model["root"]["input"]["model"][columnIDs[1]]["discretization"]["use_analytic_jacobian"] : false
+                        prototypeJacobian = prototypeJacobian,
+                        analyticalJacobian = analyticalJacobian
                         )
     
                         
