@@ -6,12 +6,11 @@ include(joinpath(@__DIR__,"..\\..\\include.jl"))
 
 
 
-filename = joinpath(@__DIR__,"model1DG.h5")
+filename = joinpath(@__DIR__,"test1.h5")
 file = h5open(filename, "r")
 model = file
 
 
-# read(file["input/model"]["unit_000"]["sec_001"]["CONST_COEFF"])
 inlets, outlets, columns, switches, solverOptions = create_units(model)
 
 solve_model(

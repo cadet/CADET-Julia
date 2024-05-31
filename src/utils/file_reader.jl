@@ -357,6 +357,8 @@ function create_units(model::HDF5.File)
     # When a column is added, preserve the number and ID 
     columnIDs = String[] #
     columnNumber = Int64[]
+	prototypeJacobian = true
+    analyticalJacobian = false
     keyss = keys(model["input/model"])
 
     for i in eachindex(keyss) #i=5
@@ -496,22 +498,40 @@ function create_units(model::HDF5.File)
                 push!(columnNumber, length(columnNumber)+1)
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
+				
+				elseif unit_type == "CSTR"
+					column_instance = cstr(; nComp = read(value["NCOMP"]), 
+											V = read(value["INIT_VOLUME"]),
+											c0 = haskey(value, "INIT_C") ? value["INIT_C"] : 0
+											)
+					push!(columns, column_instance)
+					# Assign ID and number in columns
+					push!(columnNumber, length(columnNumber)+1)
+					push!(columnIDs, unit_name)
+					units[unit_name] = column_instance
 
             else
                 println("Unknown unit type: $unit_type")
             end
         end
     end
+	
+	# Determining the indices for when a new unit is starting
+    nColumns = length(columns)
+    idx_units = zeros(Int64, nColumns)
+    for i = 2:nColumns 
+        idx_units[i] = idx_units[i-1] + columns[i-1].unitStride
+    end
 
 	# Setting up sections and switch times 
-	
 	switches = Switches(
 		nSections =  convert(Int64, read(model["input"]["solver"]["sections"]["NSEC"])), 
 		section_times = read(model["input"]["solver"]["sections"]["SECTION_TIMES"]),
         nSwitches = convert(Int64, read(model["input"]["model"]["connections"]["NSWITCHES"])),
-		nColumns = length(columns), # 
-		nComp = convert(Int64, read(model["input"]["model"]["unit_000"]["NCOMP"]))
-		)
+		nColumns = nColumns, # 
+		nComp = convert(Int64, read(model["input"]["model"]["unit_000"]["NCOMP"])),
+		idx_units = idx_units)
+
 
     for i = 0:read(model["input"]["model"]["connections"]["NSWITCHES"])-1 #i = 0
         # Format the number iterator with leading zeros
@@ -546,7 +566,20 @@ function create_units(model::HDF5.File)
                 idx = findfirst(x -> x == sinkID, columnIDs)
                 sink = columnNumber[idx]
                 
-                if typeof(source)<:ModelBase
+                if typeof(source)<:ModelBase || typeof(source)<:cstr
+                    idx = findfirst(x -> x == sourceID, columnIDs)
+                    source = (columnNumber[idx],source)
+                end
+            end
+			
+			if typeof(sink)<:cstr # if sink is cstr 
+                u = connectionMatrix[j,5]
+
+                # As sink is a cstr, the unit number is needed 
+                idx = findfirst(x -> x == sinkID, columnIDs)
+                sink = columnNumber[idx]
+                
+                if typeof(source)<:ModelBase || typeof(source)<:cstr
                     idx = findfirst(x -> x == sourceID, columnIDs)
                     source = (columnNumber[idx],source)
                 end
@@ -576,6 +609,18 @@ function create_units(model::HDF5.File)
                         ) 
         end  
     end  
+	
+	# find discretization options
+    for i in eachindex(keyss)
+        if haskey(model["input/model"][keyss[i]], "discretization")
+            if haskey(model["input/model"][keyss[i]]["discretization"], "USE_PROTOTYPE_JACOBIAN")
+                prototypeJacobian = read(model["input/model"][keyss[i]]["discretization"]["USE_PROTOTYPE_JACOBIAN"])
+            end 
+            if haskey(model["input/model"][keyss[i]], "USE_ANALYTICAL_JACOBIAN")
+                analyticalJacobian = read(model["input/model"][keyss[i]]["discretization"]["USE_ANALYTICAL_JACOBIAN"])
+            end
+        end
+    end
 
     # Solver options 
     solverOptions = SolverCache(
@@ -586,8 +631,8 @@ function create_units(model::HDF5.File)
                         reltol = read(model["input"]["solver"]["time_integrator"]["RELTOL"]), 
                         solution_times = collect(model["input"]["solver"]["USER_SOLUTION_TIMES"]),
                         # dt = 1.0,
-                        prototypeJacobian = true,
-                        analyticalJacobian = false # Bool(get(read(file["input/model"]["unit_001"]["discretization"]),"USE_ANALYTIC_JACOBIAN", false))
+                        prototypeJacobian = prototypeJacobian,
+                        analyticalJacobian = analyticalJacobian
                         )
     
                         
