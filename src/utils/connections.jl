@@ -174,7 +174,7 @@ mutable struct Connection
 		switches.ConnectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
 		for j in 1:model.nComp 
 			# The following line assumes all transport models have the same discretization! 
-			switches.ConnectionInstance.idx_connect[switch, sink, j] = model.bindStride + (j-1) * model.bindStride + switches.idx_units[columnNumber]
+			switches.ConnectionInstance.idx_connect[switch, sink, j] = model.ConnectionInstance.nPoints + (j-1) * model.ConnectionInstance.nPoints + switches.idx_units[columnNumber]
 		end
 		
 	end
