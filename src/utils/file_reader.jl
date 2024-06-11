@@ -26,7 +26,15 @@ function create_units(model::Union{Dict, OrderedDict})
 					# Insert inlet concentrations using the modifyInlet function 
 					num_sections = 1 # section number 
 					for key1 = 1:length(keys(value))
-                        ID = "sec_00$(num_sections-1)"
+					 # Format the number iterator with leading zeros
+                        if num_sections<10
+                            ID = "sec_00$(num_sections-1)"
+                        elseif num_sections<100
+                            ID = "sec_0$(num_sections-1)"
+                        elseif num_sections<1000
+                            ID = "sec_$(num_sections-1)"
+                        end
+
 						# If inlets are specified 
 						if ID in keys(value)
 							
@@ -198,8 +206,19 @@ function create_units(model::Union{Dict, OrderedDict})
         for j = 1:size(connectionMatrix)[1] #j=1
             ID = Int64(connectionMatrix[j,1])
             sourceID = "unit_00$ID"
+			if ID > 9
+                sourceID = "unit_0$ID"
+            elseif ID > 99
+                sourceID = "unit_$ID"
+            end
+			
             ID = Int64(connectionMatrix[j,2])
             sinkID = "unit_00$ID"
+			if ID > 9
+                sinkID = "unit_0$ID"
+            elseif ID > 99
+                sinkID = "unit_$ID"
+            end
 
             source = units[sourceID]
             sink = units[sinkID]
@@ -376,7 +395,14 @@ function create_units(model::HDF5.File)
 					# Insert inlet concentrations using the modifyInlet function 
 					num_sections = 1 # section number 
 					for key1 in keys(value)
-                        ID = "sec_00$(num_sections-1)"
+						if num_sections<10
+                            ID = "sec_00$(num_sections-1)"
+                        elseif num_sections<100
+                            ID = "sec_0$(num_sections-1)"
+                        elseif num_sections<1000
+                            ID = "sec_$(num_sections-1)"
+                        end
+ 
 						# If inlets are specified 
 						if occursin(ID, key1)
 							
@@ -547,8 +573,19 @@ function create_units(model::HDF5.File)
         for j = 1:size(connectionMatrix)[1] #j=1
             ID = Int64(connectionMatrix[j,1])
             sourceID = "unit_00$ID"
+			if ID > 9
+                sourceID = "unit_0$ID"
+            elseif ID > 99
+                sourceID = "unit_$ID"
+            end
+			
             ID = Int64(connectionMatrix[j,2])
             sinkID = "unit_00$ID"
+			if ID > 9
+                sinkID = "unit_0$ID"
+            elseif ID > 99
+                sinkID = "unit_$ID"
+            end
 
             source = units[sourceID]
             sink = units[sinkID]
