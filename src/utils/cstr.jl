@@ -45,7 +45,7 @@ mutable struct cstr
 		solution_times = Float64[]
 
 
-		new(nComp, V, cIn, c0, unitStride, solution_outlet, solution_times)
+		new(nComp, Float64.(V), cIn, Float64.(c0), unitStride, solution_outlet, solution_times)
 	end
 end
 

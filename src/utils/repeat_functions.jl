@@ -57,16 +57,21 @@ function repeat_pattern(cIn::Array{Float64}, switchSetup, nSwitches)
         end 
     end
     
-	# now it should repeat the pattern as many times as possible 
-	nrows = size(cIn)[1]
-	pattern = view(cIn, 1:idx, :, :)
-	repetitions = div(nrows, idx)
-	remainder = mod(nrows, idx)
-	
-	repeated_pattern = repeat(pattern, repetitions, 1)
-	remainder_pattern = view(pattern, 1:remainder, :, :)
+	# If all the values are filled i.e., the pattern should not be repeated, return input value
+	if idx == 0
+		return cIn
+	else
+		# now it should repeat the pattern as many times as possible 
+		nrows = size(cIn)[1]
+		pattern = view(cIn, 1:idx, :, :)
+		repetitions = div(nrows, idx)
+		remainder = mod(nrows, idx)
+		
+		repeated_pattern = repeat(pattern, repetitions, 1)
+		remainder_pattern = view(pattern, 1:remainder, :, :)
 
-    return vcat(repeated_pattern, remainder_pattern)
+		return vcat(repeated_pattern, remainder_pattern)
+	end
 end
 
 
