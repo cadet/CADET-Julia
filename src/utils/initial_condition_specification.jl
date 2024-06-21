@@ -29,7 +29,7 @@ function initial_condition_specification(nComp, ConvDispOpInstance, bindStride, 
 	elseif cp0 == 0 # if provided as zero, set zero for all components
 		cp0 = zeros(Float64, nComp * bindStride)
 
-	elseif length(c0) == nComp #if initial conditions for each component is given
+	elseif length(cp0) == nComp #if initial conditions for each component is given
 		cp00 = zeros(Float64, nComp * bindStride)
 		for i = 1:nComp
 			cp00[1 + (i-1) * bindStride : bindStride + (i-1) * bindStride] .= cp0[i]

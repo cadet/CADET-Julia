@@ -465,9 +465,9 @@ function create_units(model::HDF5.File)
 									c0 = read(value["INIT_C"]), 
 									q0 = read(value["INIT_Q"]),
 									# save_output = true, # defaults to true
-									polyDeg = convert(Int64,read(value["discretization"]["POLYDEG"])), # defaults to 4
-									nCells = convert(Int64,read(value["discretization"]["NELEM"])), # defaults to 8
-									exactInt = read(value["discretization"]["EXACT_INTEGRATION"]) # 
+									polyDeg = haskey(value, "discretization/POLYDEG") ? convert(Int64, read(value["discretization"]["POLYDEG"])) : 4,   # defaults to 4
+                                    nCells = haskey(value, "discretization/NELEM") ? convert(Int64, read(value["discretization"]["NELEM"])) : 8,        # defaults to 8
+                                    exactInt = haskey(value, "discretization/EXACT_INTEGRATION") ? convert(Bool, read(value["discretization"]["EXACT_INTEGRATION"])) : true
 									)
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)
                 push!(columns, column_instance)
@@ -488,9 +488,9 @@ function create_units(model::HDF5.File)
                                         c0 = read(value["INIT_C"]),
                                         cp0 = haskey(value, "INIT_CP") ? read(value["INIT_CP"]) : -1,
                                         q0 = read(value["INIT_Q"]),
-                                        polyDeg = read(value["discretization"]["POLYDEG"]), # defaults to 4
-                                        nCells = read(value["discretization"]["NELEM"]), # defaults to 8
-                                        exactInt = read(value["discretization"]["EXACT_INTEGRATION"])
+                                        polyDeg = haskey(value, "discretization/POLYDEG") ? convert(Int64, read(value["discretization"]["POLYDEG"])) : 4,   # defaults to 4
+                                        nCells = haskey(value, "discretization/NELEM") ? convert(Int64, read(value["discretization"]["NELEM"])) : 8,        # defaults to 8
+                                        exactInt = haskey(value, "discretization/EXACT_INTEGRATION") ? convert(Bool, read(value["discretization"]["EXACT_INTEGRATION"])) : true
                                         )
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)
                 push!(columns, column_instance)
@@ -513,11 +513,11 @@ function create_units(model::HDF5.File)
                                         Dp = read(value["PAR_DIFFUSION"]),
                                         c0 = read(value["INIT_C"]),
                                         cp0 = haskey(value, "INIT_CP") ? read(value["INIT_CP"]) : -1,
-                                        q0 = read(value["INIT_Q"]),
-                                        polyDeg = read(value["discretization"]["POLYDEG"]), # defaults to 4
-                                        polyDegPore = read(value["discretization"]["PAR_POLYDEG"]), # defaults to 4
-                                        nCells = read(value["discretization"]["NELEM"]), # defaults to 8
-                                        exactInt = read(value["discretization"]["EXACT_INTEGRATION"]))
+                                        q0 = read(value["INIT_Q"]),                                        
+                                        polyDeg = haskey(value, "discretization/POLYDEG") ? convert(Int64, read(value["discretization"]["POLYDEG"])) : 4,   # defaults to 4
+                                        nCells = haskey(value, "discretization/NELEM") ? convert(Int64, read(value["discretization"]["NELEM"])) : 8,        # defaults to 8
+                                        polyDegPore = haskey(value, "discretization/PAR_POLYDEG") ? convert(Int64, read(value["discretization"]["PAR_POLYDEG"])) : 8, # defaults to 4
+                                        exactInt = haskey(value, "discretization/EXACT_INTEGRATION") ? convert(Bool, read(value["discretization"]["EXACT_INTEGRATION"])) : true)
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)
                 push!(columns, column_instance)
                 # Assign ID and number in columns
@@ -525,17 +525,23 @@ function create_units(model::HDF5.File)
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
 				
-				elseif unit_type == "CSTR"
+				elseif unit_type == "CSTR" || unit_type == "CSTR_CONSTANT_VOLUME"
+                    V = 1.0
+                    if unit_type == "CSTR_CONSTANT_VOLUME"
+                        V = read(value["VOLUME"])
+                    elseif unit_type == "CSTR"
+                        V = read(value["INIT_VOLUME"])
+                        println("CSTR assumed constant volume")
+                    end
 					column_instance = cstr(; nComp = read(value["NCOMP"]), 
-											V = read(value["INIT_VOLUME"]),
-											c0 = haskey(value, "INIT_C") ? value["INIT_C"] : 0
+											V = V,
+											c0 = haskey(value, "INIT_C") ? read(value["INIT_C"]) : 0
 											)
 					push!(columns, column_instance)
 					# Assign ID and number in columns
 					push!(columnNumber, length(columnNumber)+1)
 					push!(columnIDs, unit_name)
 					units[unit_name] = column_instance
-
             else
                 println("Unknown unit type: $unit_type")
             end
@@ -569,7 +575,16 @@ function create_units(model::HDF5.File)
             switchIterator = "switch_$(i)"
         end
         connectionVector = read(model["input"]["model"]["connections"][switchIterator]["CONNECTIONS"])
-        connectionMatrix = transpose(reshape(connectionVector, 5, length(connectionVector) ÷ 5))
+        connectionMatrix = zeros(2, 2)
+        if mod(length(connectionVector), 5) == 0
+            connectionMatrix = transpose(reshape(connectionVector, 5, length(connectionVector) ÷ 5))
+        elseif mod(length(connectionVector), 8) == 0
+            println("Quadratic flowrate not supported - constant flowrate assumed")
+            connectionMatrix = transpose(reshape(connectionVector, 8, length(connectionVector) ÷ 8))
+        else 
+            throw("Error in the connections readings")
+        end 
+
         for j = 1:size(connectionMatrix)[1] #j=1
             ID = Int64(connectionMatrix[j,1])
             sourceID = "unit_00$ID"
