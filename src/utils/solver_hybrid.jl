@@ -66,8 +66,11 @@ function solve_model_hybrid(; columns, switches::Switches, solverOptions, hybrid
 		hybrid_model_setup.i = i
 
 		fun = ODEFunction(hybrid_model_setup; jac_prototype = jacProto)
-		prob = ODEProblem(fun, x0, (0, tspan[2]-tspan[1]), ComponentArray(p_NN))
-		sol = solve(prob, alg, saveat=solverOptions.solution_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol, sensealg = sensealg) 
+		prob = ODEProblem(fun, x0, (0, tspan[2]-tspan[1]), p_NN)
+		idx_1 = findfirst(==(switches.section_times[i]), solverOptions.solution_times)
+		idx_2 = findfirst(==(switches.section_times[i+1]), solverOptions.solution_times)
+		sol_times = solverOptions.solution_times[idx_1 : idx_2] .- switches.section_times[i]
+		sol = solve(prob, alg, saveat=sol_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol, sensealg = sensealg) 
 		
 		#New initial conditions
 		x0 = sol.u[end]
@@ -75,8 +78,11 @@ function solve_model_hybrid(; columns, switches::Switches, solverOptions, hybrid
 		#Extract solution in solution_outlet in each unit 
 		for j = 1: solverOptions.nColumns
 			for k = 1:columns[j].nComp 
-				
-				columns[j].solution_outlet[length(columns[j].solution_times) + 1 : length(columns[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k*columns[j].ConvDispOpInstance.nPoints + solverOptions.idx_units[j]).u
+				if typeof(columns[j]) == cstr
+					columns[j].solution_outlet[length(columns[j].solution_times) + 1 : length(columns[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k + solverOptions.idx_units[j]).u
+				else
+					columns[j].solution_outlet[length(columns[j].solution_times) + 1 : length(columns[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k*columns[j].ConvDispOpInstance.nPoints + solverOptions.idx_units[j]).u
+				end				
 			end 
 			append!(columns[j].solution_times, sol.t[2:end] .+ tspan[1])
 		end
@@ -86,8 +92,11 @@ function solve_model_hybrid(; columns, switches::Switches, solverOptions, hybrid
 			for j in eachindex(outlets)
 				if outlets[j].idx_outlet != [-1]
 					for k = 1:columns[1].nComp
-						
-						outlets[j].solution_outlet[length(outlets[j].solution_times) + 1 : length(outlets[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k*columns[outlets[j].idx_unit[switches.switchSetup[i]]].ConvDispOpInstance.nPoints + outlets[j].idx_outlet[switches.switchSetup[i]]).u
+						if typeof(columns[outlets[j].idx_unit[switches.switchSetup[i]]]) == cstr
+							outlets[j].solution_outlet[length(outlets[j].solution_times) + 1 : length(outlets[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k + outlets[j].idx_outlet[switches.switchSetup[i]]).u
+						else
+							outlets[j].solution_outlet[length(outlets[j].solution_times) + 1 : length(outlets[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k*columns[outlets[j].idx_unit[switches.switchSetup[i]]].ConvDispOpInstance.nPoints + outlets[j].idx_outlet[switches.switchSetup[i]]).u
+						end
 					end 
 					append!(outlets[j].solution_times,sol.t[2:end] .+ tspan[1])
 				end

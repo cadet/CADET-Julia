@@ -61,7 +61,10 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 		tspan = (switches.section_times[i], switches.section_times[i+1])
 		fun = ODEFunction(problem!; jac_prototype = jacProto, jac = analytical_jac)
 		prob = ODEProblem(fun, x0, (0, tspan[2]-tspan[1]), p)
-		sol = solve(prob, alg, saveat=solverOptions.solution_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol) 
+		idx_1 = findfirst(==(switches.section_times[i]), solverOptions.solution_times)
+		idx_2 = findfirst(==(switches.section_times[i+1]), solverOptions.solution_times)
+		sol_times = solverOptions.solution_times[idx_1 : idx_2] .- switches.section_times[i]
+		sol = solve(prob, alg, saveat=sol_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol) 
 		
 		#New initial conditions
 		x0 = sol.u[end]
