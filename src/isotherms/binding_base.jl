@@ -427,3 +427,63 @@ end
 # 	end
 #     nothing
 # end
+
+
+
+mutable struct Langmuir_LDF <: bindingBase 
+	# Check parameters
+	Keq::Vector{Float64}
+	qmax::Vector{Float64}
+	k_L::Vector{Float64}
+	# bindStride::Vector{Float64}
+	q_eq::Vector{Float64}
+	denom::Vector{Float64}
+	nBound::Vector{Bool} 
+	idx::UnitRange{Int64}
+
+	# Define a constructor for Langmuir that accepts keyword arguments
+	function Langmuir_LDF(; Keq::Vector{Float64}, qmax::Vector{Float64}, k_L, bindStride, nBound::Vector{Bool})
+		"""
+		Langmuir w. linear driving force. Formulated as: 
+		dq/dt = k_L(q^*-q)
+		where k_L is a lumped constant. Sometimes written as 3/Rp*k_L for spherical particles. 
+		k_L is sometimes determined through correlations for sherwoods number, reynolds number of schmidt number. 
+		"""
+
+		if typeof(k_L) == Float64 
+			k_L = Float64.(nBound)*k_L
+		end
+		
+
+		# For vector allocations
+		q_eq = zeros(Float64, bindStride)
+		denom = zeros(Float64, bindStride)
+		idx = 1:bindStride
+
+		new(Keq, qmax, k_L, q_eq, denom, nBound, idx)
+	end
+end
+
+
+# Computing the binding of the Langmuir isotherm
+function compute_binding!(RHS_q, cpp, qq, bind::Langmuir_LDF, nComp, bindStride, t)
+	# RHS_q = zeros(mobStride * 4)
+	fill!(RHS_q,0.0)
+	fill!(bind.denom,0.0)
+
+	@inbounds for j in 1:nComp #Components
+		bind.idx = 1  + (j-1) * bindStride  : bindStride + (j-1) * bindStride
+					
+		@. @views bind.denom +=  bind.Keq[j] * cpp[bind.idx] #sum(ka*cp)
+	end
+	@. bind.denom += 1 # 1+sum(ka*cp)
+
+	#Components
+	@inbounds for j in 1:nComp
+		bind.idx = 1  + (j-1) * bindStride  : bindStride + (j-1) * bindStride
+		@. bind.q_eq = bind.Keq[j] * bind.qmax[j] * cpp[bind.idx] / bind.denom
+		@. @views RHS_q[bind.idx] = bind.k_L[j]*(bind.q_eq - qq[bind.idx]) #dqdt = k_L*(q^*-q)
+	end
+
+	nothing
+end
