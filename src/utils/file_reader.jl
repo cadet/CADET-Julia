@@ -345,6 +345,15 @@ function get_bind(value,bindstride)
 						bindStride = bindstride, # Not necessary for Linear model, only for Langmuir and SMA		
 						kkin = kkin
 						)
+						
+	elseif ads_model == "MULTI_COMPONENT_LANGMUIR_LDF"
+		bind = Langmuir_LDF(
+						Keq = value["adsorption"]["MCL_LDF_Keq"] ./ 1.0,
+						qmax = value["adsorption"]["MCL_LDF_QMAX"] ./ 1.0,
+						k_L = value["adsorption"]["MCL_LDF_kL"] ./ 1.0,
+						nBound = nBound, # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
+						bindStride = bindstride, # Not necessary for Linear model, only for Langmuir and SMA		
+						)
 
 	elseif ads_model == "STERIC_MASS_ACTION"
         bind = SMA(
