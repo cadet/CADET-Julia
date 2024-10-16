@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: ['1.10']
+        os: ['ubuntu-latest']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+
+      - name: Install dependencies
+        run: |
+          julia --project -e 'using Pkg; Pkg.instantiate()'
+
+      - name: List installed packages
+        run: |
+          julia --project -e 'using Pkg; Pkg.status()'
+
+      - name: Run tests
+        run: |
+          julia --project -e 'using Pkg; Pkg.activate("."); include("test/runtests.jl")'
