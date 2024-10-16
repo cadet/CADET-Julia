@@ -1,4 +1,5 @@
 
+using Test
 
 # Add the include file custom to load packages and scripts. 
 # the file is located on the main from which the file takes care of the rest. 
@@ -108,9 +109,5 @@ err = [0.0]
 for i =1:nComp
     err[1] = maximum([err[1], maximum(abs.(columns[1].solution_outlet[:,i]-c_analytical[:,"C$(i-1)"]))])
 end
-if err[1]<1e-3
-    println("Test succesful - error lower than 1e-3")
-else
-    println("Test unsuccesful - error larger than 1e-3")
-end
 
+@test err[1] < 1e-3

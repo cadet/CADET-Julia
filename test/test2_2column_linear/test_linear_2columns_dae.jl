@@ -1,4 +1,5 @@
 
+using Test
 
 # Add the include file custom to load packages and scripts. 
 # the file is located on the main from which the file takes care of the rest. 
@@ -111,8 +112,5 @@ C1 = vec(read(file["output/solution/unit_002"]["SOLUTION_OUTLET"]))
 
 
 err = maximum([maximum(C0 - columns[1].solution_outlet[:,1]), maximum(maximum(C1 - columns[2].solution_outlet[:,1]))])
-if err<1e-3
-    println("Test succesful - error lower than 1e-3")
-else
-    println("Test unsuccesful - error larger than 1e-3")
-end
+
+@test err < 1e-3
