@@ -2,7 +2,7 @@
 using Test  # Import the Test module
 
 # A script for running all the tests 
-include(joinpath(@__DIR__, "..\\include.jl"))
+include(joinpath(@__DIR__, "..", "include.jl"))
 
 # Define a function to run tests and print a summary
 function run_tests()
