@@ -3,7 +3,7 @@ using Test
 
 # Add the include file custom to load packages and scripts. 
 # the file is located on the main from which the file takes care of the rest. 
-include(joinpath(@__DIR__,"..\\..\\include.jl"))
+include(joinpath(@__DIR__,"..", "..", "include.jl"))
 
 
 
