@@ -4,7 +4,7 @@ CADET-Julia
 CADET-Julia is a numerical solver for chromatography and is a streamlined and efficient adaption of the more comprehensive [CADET-Core](https://github.com/modsim/CADET) project, and is based on a spatial Discontinuous Galerkin Spectral Element Method (DGSEM), similar to the one implemented in CADET-Core.
 If you find it useful for your own work, we would appreciate acknowledgements of this software and citations of our papers:
 
-- Jesper Frandsen, Jan M. Breuer, Eric von Lieres, Johannes Schmölder, Jakob K. Huusom, Krist V. Gernaey, Jens Abildskov: Discontinuous Galerkin spectral element method for continuous chromatography: Application to the Lumped Rate Model without pores, Computer Aided Chemical Engineering, 53, 3325-3330.
+- Jesper Frandsen, Jan M. Breuer, Eric von Lieres, Johannes Schmölder, Jakob K. Huusom, Krist V. Gernaey, Jens Abildskov: [Discontinuous Galerkin spectral element method for continuous chromatography: Application to the Lumped Rate Model without pores](https://doi.org/10.1016/B978-0-443-28824-1.50555-X), Computer Aided Chemical Engineering, 53, 3325-3330.
 
 Overview
 -------
