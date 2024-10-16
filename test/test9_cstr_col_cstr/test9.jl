@@ -1,4 +1,5 @@
 
+using Test
 
 # Add the include file custom to load packages and scripts. 
 # the file is located on the main from which the file takes care of the rest. 
@@ -121,9 +122,5 @@ solve_model(
 using CSV,DataFrames 
 c_analytical = CSV.read((joinpath(@__DIR__,"test9.csv")),DataFrame)
 err = maximum(abs.(outlets[1].solution_outlet[:,1]-c_analytical[:,"C0"]))
-if err<1e-5
-    println("Test succesful - error lower than 1e-5")
-else
-    println("Test unsuccesful - error larger than 1e-5")
-end
 
+@test err < 1e-5
