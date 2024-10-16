@@ -2,6 +2,9 @@ CADET-Julia
 ======
 
 CADET-Julia is a numerical solver for chromatography and is a streamlined and efficient adaption of the more comprehensive [CADET-Core](https://github.com/modsim/CADET) project, and is based on a spatial Discontinuous Galerkin Spectral Element Method (DGSEM), similar to the one implemented in CADET-Core.
+If you find it useful for your own work, we would appreciate acknowledgements of this software and citations of our papers:
+
+- Jesper Frandsen, Jan M. Breuer, Eric von Lieres, Johannes Schmölder, Jakob K. Huusom, Krist V. Gernaey, Jens Abildskov: Discontinuous Galerkin spectral element method for continuous chromatography: Application to the Lumped Rate Model without pores, Computer Aided Chemical Engineering, 53, 3325-3330.
 
 Overview
 -------
@@ -21,18 +24,20 @@ Getting started
 
 Clone this repository: `git clone https://github.com/jespfra/CADET-Julia.git`
 
-To set up and run simulations, please refer to the example folder.
+Install Julia, preferably as an extension to your IDE such as visual studio code.
+
+Open a Julia REPL at the project directory and run the following commands:
+
+```julia
+using Pkg
+Pkg.instantiate()
+```
+
+You can compile and execute any of the simulations defined in the test folder.
+
+To set up and run your own simulations, please refer to the test folder.
  
 License
 -------
 
 Released under GPL v3. License (see [here](https://github.com/jespfra/CADET-Julia/blob/main/LICENSE))
-
-Acknowledgments
----------------
-
-### Contributors
-* [Jesper Frandsen](https://github.com/jespfra) (Technical University of Denmark, Copenhagen, Denmark)
-* [Jan Breuer](https://github.com/jbreue16) (Forschungszentrum Juelich GmbH, IBG-1: Biotechnology, Juelich, Germany)
-* [Johannes Schmölder](https://github.com/schmoelder) (Forschungszentrum Juelich GmbH, IBG-1: Biotechnology, Juelich, Germany)
-
