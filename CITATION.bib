@@ -1,0 +1,16 @@
+% As an open-source project, CADET-Julia relies on the support and recognition from users and researchers to thrive.
+% Therefore, we kindly ask that any publications or projects leveraging the capabilities of CADET-Julia acknowledge its creators and their contributions by citing the following publication.
+
+@article{FRANDSEN2025108913,
+title = {CADET-Julia: Efficient and versatile, open-source simulator for batch chromatography in Julia},
+journal = {Computers & Chemical Engineering},
+volume = {192},
+pages = {108913},
+year = {2025},
+issn = {0098-1354},
+doi = {https://doi.org/10.1016/j.compchemeng.2024.108913},
+url = {https://www.sciencedirect.com/science/article/pii/S0098135424003314},
+author = {Jesper Frandsen and Jan Michael Breuer and Johannes Schmölder and Jakob Kjøbsted Huusom and Krist V. Gernaey and Jens Abildskov and Eric {von Lieres}},
+keywords = {Column liquid chromatography, General rate model, Lumped rate model with pores, Lumped rate model without pores, Discontinuous Galerkin spectral element method, CADET},
+abstract = {This study introduces CADET-Julia, an open-source, versatile and fast chromatography solver implemented in the Julia programming language. The software offers a platform for rapid prototyping and numerical refinement for a range of chromatography models, including the general rate model (GRM). The interstitial column mass balance was spatially discretized using a strong-form discontinuous Galerkin spectral element method (DGSEM) whereas a generalized spatial Galerkin spectral method (GSM) was applied for the particle mass balance. Three different benchmarks showcased the computational efficiency of CADET-Julia: A baseline benchmark was established by comparing the Julia implementation to a C++ implementation that employed the same mathematical methods and time integrator (CADET-DG). Various Julia time integrators were tested, and with the best-performing settings, the Julia implementation was benchmarked against CADET-DG and a finite volume (FV) based implementation in C++ (CADET-FV). Overall, Julia implementations performed better than C++ implementations and Galerkin methods were generally superior to finite volumes.}
+}

@@ -1,0 +1,25 @@
+{
+  "title": "CADET-Julia: Version 0.2.0",
+  "upload_type": "software",
+  "creators": [
+    { 
+      "name": "Frandsen, Jesper", 
+      "orcid": "0000-0003-1046-2295", 
+      "affiliation": "Technical University of Denmark"
+    },
+    { 
+      "name": "Breuer, Jan Michael", 
+      "orcid": "0000-0002-1999-2439", 
+      "affiliation": "Forschungszentrum Jülich"
+    }
+  ],
+  "license": "GPL-3.0",
+  "keywords": [
+   "modeling","simulation", "biotechnology", "process", "chromatography", "CADET", "general rate model", "Julia"
+  ],
+  "version": "0.2.0",
+  "access_right": "open",
+  "communities": [
+    { "identifier": "open-source" }
+  ]
+}
