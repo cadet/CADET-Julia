@@ -2,15 +2,15 @@
 ![CI](https://github.com/cadet/cadet-julia/actions/workflows/CI.yml/badge.svg)
 
 CADET-Julia
-======
+===========
 
 CADET-Julia is a numerical solver for chromatography and is a streamlined and efficient adaption of the more comprehensive [CADET-Core](https://github.com/modsim/CADET) project, and is based on a spatial Discontinuous Galerkin Spectral Element Method (DGSEM), similar to the one implemented in CADET-Core.
 If you find it useful for your own work, we would appreciate acknowledgements of this software and citations of our papers:
 
-- Jesper Frandsen, Jan M. Breuer, Eric von Lieres, Johannes Schmölder, Jakob K. Huusom, Krist V. Gernaey, Jens Abildskov: [Discontinuous Galerkin spectral element method for continuous chromatography: Application to the Lumped Rate Model without pores](https://doi.org/10.1016/B978-0-443-28824-1.50555-X), Computer Aided Chemical Engineering, 53, 3325-3330.
+- Jesper Frandsen, Jan M. Breuer, Johannes Schmölder, Jakob K. Huusom, Krist V. Gernaey, Jens Abildskov, Eric von Lieres: [CADET-Julia: Efficient and versatile, open-source simulator for batch chromatography in Julia](https://doi.org/10.1016/j.compchemeng.2024.108913), Computers & Chemical Engineering, Volume 192 (2025), 108913
 
 Overview
--------
+--------
 
 [CADET-Core](https://github.com/modsim/CADET) is the foundational C++ project, with a comprehensive codebase and extensive functionality.
 Recognizing the need for a more accessible and agile solution, this Julia implementation was created.
@@ -23,7 +23,7 @@ For more details about the CADET-project, including the original CADET-Core, we 
  
 
 Getting started
--------
+---------------
 
 Clone this repository: `git clone https://github.com/jespfra/CADET-Julia.git`
 
