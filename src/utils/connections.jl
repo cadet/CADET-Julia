@@ -119,10 +119,20 @@ mutable struct Connection
 	cIn_q::Array{Float64,3}
 	cIn_cube::Array{Float64,3}
 
+	Q_inlet_c::Array{Float64,2} # Inlet flow rates for each switch, unit/sink
+    Q_inlet_l::Array{Float64,2}
+	Q_inlet_q::Array{Float64,2}
+	Q_inlet_cube::Array{Float64,2}
+	Q_unit_c::Array{Float64,2} 
+    Q_unit_l::Array{Float64,2}
+	Q_unit_q::Array{Float64,2}
+	Q_unit_cube::Array{Float64,2}
+	dynamic_flow 
+
 	# For these cosntructors, we cannot use keyword arguments when having multiple constructors 
 	
 	# If an inlet is specified as input
-	function Connection(switches, switch::Int64, section::Int64, source::CreateInlet, sink::Int64, u::Float64)
+	function Connection(switches, switch::Int64, section::Int64, source::CreateInlet, sink::Int64, u::Float64, Q_c, Q_l, Q_q, Q_cube, dynamic_flow_check)
 		# Here input is the inlet concentration 
 
 		# The switchSetup is set to a section 
@@ -155,11 +165,21 @@ mutable struct Connection
 			switches.ConnectionInstance.cIn_l[section, sink, :] = source.cIn_l[section, :]
 			switches.ConnectionInstance.cIn_q[section, sink, :] = source.cIn_q[section, :]
 			switches.ConnectionInstance.cIn_cube[section, sink, :] = source.cIn_cube[section, :]
+			
+		end
+
+		# If dynamic flow has been specified 
+		if dynamic_flow_check == true
+			switches.ConnectionInstance.dynamic_flow[switch, sink] = YesDynamicFlow()
+			switches.ConnectionInstance.Q_inlet_c[switch, sink] = Q_c
+			switches.ConnectionInstance.Q_inlet_l[switch, sink] = Q_l
+			switches.ConnectionInstance.Q_inlet_q[switch, sink] = Q_q
+			switches.ConnectionInstance.Q_inlet_cube[switch, sink] = Q_cube
 		end
 	end
 	
 	# If a column is specified as input i.e., in series 
-	function Connection(switches, switch::Int64, section::Int64, source::Tuple{Int64,ModelBase}, sink::Int64, u::Float64)
+	function Connection(switches, switch::Int64, section::Int64, source::Tuple{Int64,ModelBase}, sink::Int64, u::Float64, Q_c, Q_l, Q_q, Q_cube, dynamic_flow_check)
 		# Unpack source 
 		columnNumber = source[1]
 		model = source[2]
@@ -174,13 +194,22 @@ mutable struct Connection
 		switches.ConnectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
 		for j in 1:model.nComp 
 			# The following line assumes all transport models have the same discretization! 
-			switches.ConnectionInstance.idx_connect[switch, sink, j] = model.ConvDispOpInstance.nPoints + (j-1) * model.ConvDispOpInstance.nPoints + switches.idx_units[columnNumber]
+			switches.ConnectionInstance.idx_connect[switch, sink, j] = model.bindStride + (j-1) * model.bindStride + switches.idx_units[columnNumber]
+		end
+		
+		# If dynamic flow has been specified 
+		if dynamic_flow_check == true
+			switches.ConnectionInstance.dynamic_flow[switch, sink] = YesDynamicFlow()
+			switches.ConnectionInstance.Q_unit_c[switch, sink] = Q_c
+			switches.ConnectionInstance.Q_unit_l[switch, sink] = Q_l
+			switches.ConnectionInstance.Q_unit_q[switch, sink] = Q_q
+			switches.ConnectionInstance.Q_unit_cube[switch, sink] = Q_cube
 		end
 		
 	end
 
 	# If a cstr is specified as input i.e., in series 
-	function Connection(switches, switch::Int64, section::Int64, source::Tuple{Int64,cstr}, sink::Int64, u::Float64)
+	function Connection(switches, switch::Int64, section::Int64, source::Tuple{Int64,cstr}, sink::Int64, u::Float64, Q_c, Q_l, Q_q, Q_cube, dynamic_flow_check)
 		# Unpack source 
 		columnNumber = source[1]
 		model = source[2]
@@ -195,6 +224,15 @@ mutable struct Connection
 		switches.ConnectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
 		for j in 1:model.nComp 
 			switches.ConnectionInstance.idx_connect[switch, sink, j] = j + switches.idx_units[columnNumber]
+		end
+		
+		# If dynamic flow has been specified 
+		if dynamic_flow_check == true
+			switches.ConnectionInstance.dynamic_flow[switch, sink] = YesDynamicFlow()
+			switches.ConnectionInstance.Q_unit_c[switch, sink] = Q_c
+			switches.ConnectionInstance.Q_unit_l[switch, sink] = Q_l
+			switches.ConnectionInstance.Q_unit_q[switch, sink] = Q_q
+			switches.ConnectionInstance.Q_unit_cube[switch, sink] = Q_cube
 		end
 		
 	end
@@ -213,12 +251,26 @@ mutable struct Connection
 		cIn_q = zeros(Float64, nSections, nColumns, nComp)
 		cIn_cube = zeros(Float64, nSections, nColumns, nComp)
 		
-		new(u_unit, u_inlet, u_tot, c_connect, idx_connect, cIn_c, cIn_l, cIn_q, cIn_cube)
+		# For dynamic flow specifications 
+		Q_inlet_c = zeros(Float64, nSwitches, nColumns) # Inlet flow rates for each switch, unit, defaults to zeros 
+		Q_inlet_l = zeros(Float64, nSwitches, nColumns)
+		Q_inlet_q = zeros(Float64, nSwitches, nColumns)
+		Q_inlet_cube = zeros(Float64, nSwitches, nColumns)
+		Q_unit_c = zeros(Float64, nSwitches, nColumns) 
+		Q_unit_l = zeros(Float64, nSwitches, nColumns)
+		Q_unit_q = zeros(Float64, nSwitches, nColumns)
+		Q_unit_cube = zeros(Float64, nSwitches, nColumns)
+		dynamic_flow = Array{Any}(undef, nSwitches, nColumns)
+		for i in 1:nSwitches, j in 1:nColumns
+			dynamic_flow[i,j] = NoDynamicFlow()
+		end
+		
+		new(u_unit, u_inlet, u_tot, c_connect, idx_connect, cIn_c, cIn_l, cIn_q, cIn_cube, Q_inlet_c, Q_inlet_l, Q_inlet_q, Q_inlet_cube, Q_unit_c, Q_unit_l, Q_unit_q, Q_unit_cube, dynamic_flow)
 	end
 	
 	
 	# If an outlet is specified as sink
-	function Connection(switches, switch::Int64, section::Int64, source::Int64, sink::CreateOutlet, u::Float64 = 0.0)
+	function Connection(switches, switch::Int64, section::Int64, source::Int64, sink::CreateOutlet, u::Float64, Q_in_c, Q_in_l, Q_in_q, Q_in_cube, dynamic_flow_check)
 		# The switchSetup is set to a section 
 		switches.switchSetup[section] = switch
 

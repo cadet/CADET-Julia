@@ -11,9 +11,9 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 	jacProto = nothing
 	p_jac = nothing
 	analytical_jac = nothing
-	RHS_q = 0
-	cpp = 0
-	qq = 0
+	RHS_q = 0.
+	cpp = 0.
+	qq = 0.
 
 	# find columns to extract allocation vectors RHS_q, cpp and qq.
 	# If there are no columns, the allocations vectors are unneccessary and kept at 0
