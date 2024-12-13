@@ -130,6 +130,7 @@ mutable struct LRM <: ModelBase
 	# These parameters are the minimum to be specified for the LRM
 	nComp::Int64 
     colLength::Float64
+	cross_section_area::Float64
     d_ax::Union{Float64, Vector{Float64}}
     eps_c::Float64
 	c0::Union{Float64, Vector{Float64}} # defaults to 0
@@ -164,9 +165,10 @@ mutable struct LRM <: ModelBase
 	solution_times::Vector{Float64}
 	bind::bindingBase
 	
+	
 
 	# Default variables go in the arguments in the LRM(..)
-	function LRM(; nComp, colLength, d_ax, eps_c, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exactInt=1)
+	function LRM(; nComp, colLength, d_ax, eps_c, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exactInt=1, cross_section_area=1.0)
 		
 		# Get necessary variables for convection dispersion DG 
 		ConvDispOpInstance = ConvDispOp(polyDeg,nCells,colLength)
@@ -210,7 +212,7 @@ mutable struct LRM <: ModelBase
 					)
 		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, colLength, d_ax, eps_c, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, unitStride, idx, Fc, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
+		new(nComp, colLength, cross_section_area, d_ax, eps_c, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, unitStride, idx, Fc, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
 	end
 end
 
@@ -219,6 +221,9 @@ end
 function compute_transport!(RHS, RHS_q, cpp, x, m::LRM, t, section, sink, switches, idx_units) 
 	# section = i from call 
 	# sink is the unit i.e., h from previous call
+	
+	# Determining inlet velocity if specified dynamically
+	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
     
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
@@ -264,6 +269,7 @@ mutable struct LRMP <: ModelBase
 	# These parameters are the minimum to be specified for the LRMP
 	nComp::Int64 
     colLength::Float64
+	cross_section_area::Float64
     d_ax::Union{Float64, Vector{Float64}}
     eps_c::Float64
 	eps_p::Float64
@@ -303,7 +309,7 @@ mutable struct LRMP <: ModelBase
 	bind::bindingBase
 
 	# Default variables go in the arguments in the LRM(..)
-	function LRMP(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exactInt=1)
+	function LRMP(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exactInt=1, cross_section_area=1.0)
 		
 		# Get necessary variables for convection dispersion DG 
 		ConvDispOpInstance = ConvDispOp(polyDeg,nCells,colLength)
@@ -355,12 +361,15 @@ mutable struct LRMP <: ModelBase
 
 		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, unitStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
+		new(nComp, colLength, cross_section_area, d_ax, eps_c, eps_p, kf, Rp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, unitStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
 	end
 end
 
 # Define a function to compute the transport term for the LRMP
 function compute_transport!(RHS, RHS_q, cpp, x, m::LRMP, t, section, sink, switches, idx_units)
+
+	# Determining inlet velocity if specified dynamically
+	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
 	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
@@ -403,6 +412,7 @@ mutable struct GRM <: ModelBase
 	# These parameters are the minimum to be specified for the LRMP
 	nComp::Int64 
     colLength::Float64
+	cross_section_area::Float64
     d_ax::Union{Float64, Vector{Float64}}
 
     eps_c::Float64
@@ -451,7 +461,7 @@ mutable struct GRM <: ModelBase
 	bind::bindingBase
 
 	# Default variables go in the arguments in the LRM(..)
-	function GRM(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Dp, Rc=0.0, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, polyDegPore=4, nCells=8, exactInt=1)
+	function GRM(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Dp, Rc=0.0, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, polyDegPore=4, nCells=8, exactInt=1, cross_section_area=1.0)
 		
 		# Get necessary variables for convection dispersion DG 
 		ConvDispOpInstance = ConvDispOp(polyDeg,nCells,colLength)
@@ -523,7 +533,7 @@ mutable struct GRM <: ModelBase
 					)
 		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Rc, Dp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, polyDegPore, ConvDispOpInstance, PoreOpInstance, bindStride, adsStride, unitStride, idx, idx_p, idx_q, Fc, Fp, Fjac, Jr, invRi, cpp, RHS_q, qq, solution_outlet, solution_times, bind)
+		new(nComp, colLength, cross_section_area, d_ax, eps_c, eps_p, kf, Rp, Rc, Dp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, polyDegPore, ConvDispOpInstance, PoreOpInstance, bindStride, adsStride, unitStride, idx, idx_p, idx_q, Fc, Fp, Fjac, Jr, invRi, cpp, RHS_q, qq, solution_outlet, solution_times, bind)
 	end
 end
 
@@ -531,6 +541,9 @@ end
 
 # Define a function to compute the transport term for the GRM
 function compute_transport!(RHS, RHS_q, cpp, x, m::GRM, t, section, sink, switches, idx_units)
+
+	# Determining inlet velocity if specified dynamically
+	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
 	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp

@@ -26,15 +26,7 @@ function create_units(model::Union{Dict, OrderedDict})
 					# Insert inlet concentrations using the modifyInlet function 
 					num_sections = 1 # section number 
 					for key1 = 1:length(keys(value))
-					 # Format the number iterator with leading zeros
-                        if num_sections<10
-                            ID = "sec_00$(num_sections-1)"
-                        elseif num_sections<100
-                            ID = "sec_0$(num_sections-1)"
-                        elseif num_sections<1000
-                            ID = "sec_$(num_sections-1)"
-                        end
-
+                        ID = "sec_00$(num_sections-1)"
 						# If inlets are specified 
 						if ID in keys(value)
 							
@@ -91,15 +83,16 @@ function create_units(model::Union{Dict, OrderedDict})
                 # Create column instance
                 # Replace the following line with your column instantiation logic
                 column_instance = LRM(nComp = value["ncomp"], 
-									colLength = value["col_length"], 
-									d_ax = value["col_dispersion"], 
-									eps_c = value["col_porosity"], 
+									colLength = value["col_length"]/1.0, 
+									d_ax = value["col_dispersion"]./1.0, 
+									eps_c = value["col_porosity"]/1.0, 
 									c0 = value["init_c"], 
 									q0 = value["init_q"],
 									# save_output = true, # defaults to true
 									polyDeg = value["discretization"]["polyDeg"], # defaults to 4
 									nCells = value["discretization"]["ncol"], # defaults to 8
-									exactInt = value["discretization"]["exact_integration"] # 
+									exactInt = value["discretization"]["exact_integration"], # 
+                                    cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
 									)
 				column_instance.bind = get_bind(value,column_instance.bindStride)
                 push!(columns, column_instance)
@@ -111,18 +104,19 @@ function create_units(model::Union{Dict, OrderedDict})
 			elseif unit_type == "LUMPED_RATE_MODEL_WITH_PORES"
                 # Create column instance
                 column_instance = LRMP(nComp = value["ncomp"], 
-                                        colLength = value["col_length"], 
-                                        d_ax = value["col_dispersion"], 
-                                        eps_c = value["col_porosity"], 
-                                        eps_p = value["par_porosity"],
-                                        kf = value["film_diffusion"],
-                                        Rp = value["par_radius"],
+                                        colLength = value["col_length"]/1.0, 
+                                        d_ax = value["col_dispersion"]./1.0, 
+                                        eps_c = value["col_porosity"]/1.0, 
+                                        eps_p = value["par_porosity"]/1.0,
+                                        kf = value["film_diffusion"]./1.0,
+                                        Rp = value["par_radius"]/1.0,
                                         c0 = value["init_c"],
                                         cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
                                         q0 = value["init_q"],
                                         polyDeg = value["discretization"]["polyDeg"], # defaults to 4
                                         nCells = value["discretization"]["ncol"], # defaults to 8
-                                        exactInt = value["discretization"]["exact_integration"]
+                                        exactInt = value["discretization"]["exact_integration"],
+                                        cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
                                         )
 				column_instance.bind = get_bind(value,column_instance.bindStride)
                 push!(columns, column_instance)
@@ -135,21 +129,23 @@ function create_units(model::Union{Dict, OrderedDict})
                 # Create column instance
                 # Replace the following line with your column instantiation logic
                 column_instance = GRM(nComp = value["ncomp"], 
-                                        colLength = value["col_length"], 
-                                        d_ax = value["col_dispersion"], 
-                                        eps_c = value["col_porosity"], 
-                                        eps_p = value["par_porosity"],
-                                        kf = value["film_diffusion"],
-                                        Rp = value["par_radius"],
-                                        Rc = haskey(value, "par_coreradius") ? value["par_coreradius"] : 0,
-                                        Dp = value["par_diffusion"],
+                                        colLength = value["col_length"]/1.0, 
+                                        d_ax = value["col_dispersion"]./1.0, 
+                                        eps_c = value["col_porosity"]/1.0, 
+                                        eps_p = value["par_porosity"]/1.0,
+                                        kf = value["film_diffusion"]./1.0,
+                                        Rp = value["par_radius"]/1.0,
+                                        Rc = (haskey(value, "par_coreradius") ? value["par_coreradius"] : 0.0)/1.0,
+                                        Dp = value["par_diffusion"]./1.0,
                                         c0 = value["init_c"],
                                         cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
                                         q0 = value["init_q"],
                                         polyDeg = value["discretization"]["polyDeg"], # defaults to 4
                                         polyDegPore = value["discretization"]["polyDegPore"], # defaults to 4
                                         nCells = value["discretization"]["ncol"], # defaults to 8
-                                        exactInt = value["discretization"]["exact_integration"])
+                                        exactInt = value["discretization"]["exact_integration"],
+                                        cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0 
+                                        )
 				column_instance.bind = get_bind(value,column_instance.bindStride)
                 push!(columns, column_instance)
                 # Assign ID and number in columns
@@ -160,8 +156,8 @@ function create_units(model::Union{Dict, OrderedDict})
 				
 			elseif unit_type == "CSTR"
 				column_instance = cstr(; nComp = value["ncomp"], 
-										V = value["volume"],
-										c0 = haskey(value, "init_c") ? value["init_c"] : 0
+										V = value["volume"]/1.0,
+										c0 = haskey(value, "init_c") ? value["init_c"] : 0.0
 										)
 				push!(columns, column_instance)
                 # Assign ID and number in columns
@@ -202,83 +198,108 @@ function create_units(model::Union{Dict, OrderedDict})
             switchIterator = "switch_$(i)"
         end
         connectionVector = model["root"]["input"]["model"]["connections"][switchIterator]["connections"]
-        connectionMatrix = transpose(reshape(connectionVector, 5, length(connectionVector) ÷ 5))
-        for j = 1:size(connectionMatrix)[1] #j=1
-            ID = Int64(connectionMatrix[j,1])
-            sourceID = "unit_00$ID"
-			if ID > 9
-                sourceID = "unit_0$ID"
-            elseif ID > 99
-                sourceID = "unit_$ID"
-            end
-			
-            ID = Int64(connectionMatrix[j,2])
-            sinkID = "unit_00$ID"
-			if ID > 9
-                sinkID = "unit_0$ID"
-            elseif ID > 99
-                sinkID = "unit_$ID"
-            end
+		
+        dynamic_flow = haskey(model["root"]["input"]["model"]["connections"][switchIterator], "dynamic_flow") ? model["root"]["input"]["model"]["connections"][switchIterator]["dynamic_flow"] : false
+        if dynamic_flow == true
+            # if dynamic flow rates is activated, the connection vector is divisble w. 8 elements as it includes lin, quad and cub coefficients 
+            divisor = 8 
+        else 
+            divisor = 5
+        end
+		connectionMatrix = transpose(reshape(connectionVector, divisor, length(connectionVector) ÷ divisor))
 
-            source = units[sourceID]
-            sink = units[sinkID]
+		for j = 1:size(connectionMatrix)[1] #j=1
+			ID = Int64(connectionMatrix[j,1])
+			sourceID = "unit_00$ID"
+			ID = Int64(connectionMatrix[j,2])
+			sinkID = "unit_00$ID"
 
-            # Setting velocity 
-            if typeof(sink)<:ModelBase # if sink is column 
-                # if both cross sectional area is given, infer via volumetric flowrate
-                if haskey(model["root"]["input"]["model"][sinkID],"cross_section_area")
-                    u = connectionMatrix[j,5]/(model["root"]["input"]["model"][sinkID]["cross_section_area"]*sink.eps_c)
-                else
-                    u = model["root"]["input"]["model"][sinkID]["velocity"]
-                end
+			source = units[sourceID]
+			sink = units[sinkID]
 
-                # As sink is a column, the column number is needed 
-                idx = findfirst(x -> x == sinkID, columnIDs)
-                sink = columnNumber[idx]
-                
-                if typeof(source)<:ModelBase || typeof(source)<:cstr
-                    idx = findfirst(x -> x == sourceID, columnIDs)
-                    source = (columnNumber[idx],source)
-                end
-            end
+			# Setting velocity 
+			if typeof(sink)<:ModelBase # if sink is column 
+				# if both cross sectional area is given, infer via volumetric flowrate
+				if haskey(model["root"]["input"]["model"][sinkID],"cross_section_area")
+					u = connectionMatrix[j, 5]/(model["root"]["input"]["model"][sinkID]["cross_section_area"]*sink.eps_c) 
+				else
+					u = model["root"]["input"]["model"][sinkID]["velocity"]
+				end
+
+				# As sink is a column, the column number is needed 
+				idx = findfirst(x -> x == sinkID, columnIDs)
+				sink = columnNumber[idx]
+
+				
+				if typeof(source)<:ModelBase || typeof(source)<:cstr
+					idx = findfirst(x -> x == sourceID, columnIDs)
+					source = (columnNumber[idx],source)
+				end
+			end
 			
 			if typeof(sink)<:cstr # if sink is cstr 
-                u = connectionMatrix[j,5]
+				u = connectionMatrix[j,5]
 
-                # As sink is a cstr, the unit number is needed 
-                idx = findfirst(x -> x == sinkID, columnIDs)
-                sink = columnNumber[idx]
-                
-                if typeof(source)<:ModelBase || typeof(source)<:cstr
-                    idx = findfirst(x -> x == sourceID, columnIDs)
-                    source = (columnNumber[idx],source)
+				# As sink is a cstr, the unit number is needed 
+				idx = findfirst(x -> x == sinkID, columnIDs)
+				sink = columnNumber[idx]
+				
+				if typeof(source)<:ModelBase || typeof(source)<:cstr
+					idx = findfirst(x -> x == sourceID, columnIDs)
+					source = (columnNumber[idx],source)
+				end
+			end
+
+			# if sink is createOutlet, the source must be from a column 
+			# Hence we need the right column
+			if typeof(sink) == CreateOutlet
+				# if sink is createOutlet, the source must be from a column 
+				# Hence we need the right column 
+				idx = findfirst(x -> x == sourceID, columnIDs)
+				source = columnNumber[idx]
+				# if outlet is specified as sink, the velocity does not matter. 
+				# hence an arbitrary value is assigned 
+
+				u = 0.1 # value not used anyway if outlets are sinks 
+			end
+
+			# if dynamic flow is activated and matrix is specified 
+			if dynamic_flow == true
+				if length(connectionMatrix[j,:]) == 8 
+					Q_c = connectionMatrix[j,5]/1.0
+					Q_l = connectionMatrix[j,6]/1.0
+					Q_q = connectionMatrix[j,7]/1.0
+					Q_cube = connectionMatrix[j,8]/1.0
+					dynamic_flow_check = true
+				else 
+					throw("Incorrect flow specification")
                 end
-            end
+			else
+				Q_c = 0.0
+				Q_l = 0.0
+				Q_q = 0.0
+				Q_cube = 0.0
+				dynamic_flow_check = false
+			end
 
-            # if sink is createOutlet, the source must be from a column 
-            # Hence we need the right column
-            if typeof(sink) == CreateOutlet
-                # if sink is createOutlet, the source must be from a column 
-                # Hence we need the right column 
-                idx = findfirst(x -> x == sourceID, columnIDs)
-                source = columnNumber[idx]
-                # if outlet is specified as sink, the velocity does not matter. 
-                # hence an arbitrary value is assigned 
-
-                u = 0.1 # value not used anyway if outlets are sinks 
-            end
-
-            # add connection 
-            Connection(
-                        switches, # Switches that must be modified and used in the simulator 
-                        i+1, # Switch XX 
-                        model["root"]["input"]["model"]["connections"][switchIterator]["section"]+1, #section 
-                        source, # Source 
-                        sink, # Unit sink 
-                        u # Velocity 
-                        ) 
-        end  
+			# add connection 
+			Connection(
+						switches, # Switches that must be modified and used in the simulator 
+						i+1, # Switch XX 
+						model["root"]["input"]["model"]["connections"][switchIterator]["section"]+1, #section 
+						source, # Source 
+						sink, # Unit sink 
+						u, # Velocity 
+						Q_c,
+						Q_l,
+						Q_q,
+						Q_cube,
+						dynamic_flow_check
+						) 
+		end
+		
     end  
+	
 
     # find discretization options
     for (key, value) in model["root"]["input"]["model"]
@@ -345,15 +366,6 @@ function get_bind(value,bindstride)
 						bindStride = bindstride, # Not necessary for Linear model, only for Langmuir and SMA		
 						kkin = kkin
 						)
-						
-	elseif ads_model == "MULTI_COMPONENT_LANGMUIR_LDF"
-		bind = Langmuir_LDF(
-						Keq = value["adsorption"]["MCL_LDF_Keq"] ./ 1.0,
-						qmax = value["adsorption"]["MCL_LDF_QMAX"] ./ 1.0,
-						k_L = value["adsorption"]["MCL_LDF_kL"] ./ 1.0,
-						nBound = nBound, # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
-						bindStride = bindstride, # Not necessary for Linear model, only for Langmuir and SMA		
-						)
 
 	elseif ads_model == "STERIC_MASS_ACTION"
         bind = SMA(
@@ -404,14 +416,7 @@ function create_units(model::HDF5.File)
 					# Insert inlet concentrations using the modifyInlet function 
 					num_sections = 1 # section number 
 					for key1 in keys(value)
-						if num_sections<10
-                            ID = "sec_00$(num_sections-1)"
-                        elseif num_sections<100
-                            ID = "sec_0$(num_sections-1)"
-                        elseif num_sections<1000
-                            ID = "sec_$(num_sections-1)"
-                        end
- 
+                        ID = "sec_00$(num_sections-1)"
 						# If inlets are specified 
 						if occursin(ID, key1)
 							
@@ -474,9 +479,10 @@ function create_units(model::HDF5.File)
 									c0 = read(value["INIT_C"]), 
 									q0 = read(value["INIT_Q"]),
 									# save_output = true, # defaults to true
-									polyDeg = haskey(value, "discretization/POLYDEG") ? convert(Int64, read(value["discretization"]["POLYDEG"])) : 4,   # defaults to 4
-                                    nCells = haskey(value, "discretization/NELEM") ? convert(Int64, read(value["discretization"]["NELEM"])) : 8,        # defaults to 8
-                                    exactInt = haskey(value, "discretization/EXACT_INTEGRATION") ? convert(Bool, read(value["discretization"]["EXACT_INTEGRATION"])) : true
+									polyDeg = convert(Int64,read(value["discretization"]["POLYDEG"])), # defaults to 4
+									nCells = convert(Int64,read(value["discretization"]["NELEM"])), # defaults to 8
+									exactInt = read(value["discretization"]["EXACT_INTEGRATION"]), 
+                                    cross_section_area = haskey(value, "CROSS_SECTION_AREA") ? read(value["CROSS_SECTION_AREA"]) : 1.0 # 
 									)
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)
                 push!(columns, column_instance)
@@ -497,9 +503,10 @@ function create_units(model::HDF5.File)
                                         c0 = read(value["INIT_C"]),
                                         cp0 = haskey(value, "INIT_CP") ? read(value["INIT_CP"]) : -1,
                                         q0 = read(value["INIT_Q"]),
-                                        polyDeg = haskey(value, "discretization/POLYDEG") ? convert(Int64, read(value["discretization"]["POLYDEG"])) : 4,   # defaults to 4
-                                        nCells = haskey(value, "discretization/NELEM") ? convert(Int64, read(value["discretization"]["NELEM"])) : 8,        # defaults to 8
-                                        exactInt = haskey(value, "discretization/EXACT_INTEGRATION") ? convert(Bool, read(value["discretization"]["EXACT_INTEGRATION"])) : true
+                                        polyDeg = read(value["discretization"]["POLYDEG"]), # defaults to 4
+                                        nCells = read(value["discretization"]["NELEM"]), # defaults to 8
+                                        exactInt = read(value["discretization"]["EXACT_INTEGRATION"]),
+                                        cross_section_area = haskey(value, "CROSS_SECTION_AREA") ? read(value["CROSS_SECTION_AREA"]) : 1.0
                                         )
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)
                 push!(columns, column_instance)
@@ -522,11 +529,13 @@ function create_units(model::HDF5.File)
                                         Dp = read(value["PAR_DIFFUSION"]),
                                         c0 = read(value["INIT_C"]),
                                         cp0 = haskey(value, "INIT_CP") ? read(value["INIT_CP"]) : -1,
-                                        q0 = read(value["INIT_Q"]),                                        
-                                        polyDeg = haskey(value, "discretization/POLYDEG") ? convert(Int64, read(value["discretization"]["POLYDEG"])) : 4,   # defaults to 4
-                                        nCells = haskey(value, "discretization/NELEM") ? convert(Int64, read(value["discretization"]["NELEM"])) : 8,        # defaults to 8
-                                        polyDegPore = haskey(value, "discretization/PAR_POLYDEG") ? convert(Int64, read(value["discretization"]["PAR_POLYDEG"])) : 8, # defaults to 4
-                                        exactInt = haskey(value, "discretization/EXACT_INTEGRATION") ? convert(Bool, read(value["discretization"]["EXACT_INTEGRATION"])) : true)
+                                        q0 = read(value["INIT_Q"]),
+                                        polyDeg = read(value["discretization"]["POLYDEG"]), # defaults to 4
+                                        polyDegPore = read(value["discretization"]["PAR_POLYDEG"]), # defaults to 4
+                                        nCells = read(value["discretization"]["NELEM"]), # defaults to 8
+                                        exactInt = read(value["discretization"]["EXACT_INTEGRATION"]), 
+                                        cross_section_area = haskey(value, "CROSS_SECTION_AREA") ? read(value["CROSS_SECTION_AREA"]) : 1.0
+                                        )
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)
                 push!(columns, column_instance)
                 # Assign ID and number in columns
@@ -534,23 +543,17 @@ function create_units(model::HDF5.File)
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
 				
-				elseif unit_type == "CSTR" || unit_type == "CSTR_CONSTANT_VOLUME"
-                    V = 1.0
-                    if unit_type == "CSTR_CONSTANT_VOLUME"
-                        V = read(value["VOLUME"])
-                    elseif unit_type == "CSTR"
-                        V = read(value["INIT_VOLUME"])
-                        println("CSTR assumed constant volume")
-                    end
+				elseif unit_type == "CSTR"
 					column_instance = cstr(; nComp = read(value["NCOMP"]), 
-											V = V,
-											c0 = haskey(value, "INIT_C") ? read(value["INIT_C"]) : 0
+											V = read(value["INIT_VOLUME"]),
+											c0 = haskey(value, "INIT_C") ? value["INIT_C"] : 0
 											)
 					push!(columns, column_instance)
 					# Assign ID and number in columns
 					push!(columnNumber, length(columnNumber)+1)
 					push!(columnIDs, unit_name)
 					units[unit_name] = column_instance
+
             else
                 println("Unknown unit type: $unit_type")
             end
@@ -584,32 +587,22 @@ function create_units(model::HDF5.File)
             switchIterator = "switch_$(i)"
         end
         connectionVector = read(model["input"]["model"]["connections"][switchIterator]["CONNECTIONS"])
-        connectionMatrix = zeros(2, 2)
-        if mod(length(connectionVector), 5) == 0
-            connectionMatrix = transpose(reshape(connectionVector, 5, length(connectionVector) ÷ 5))
-        elseif mod(length(connectionVector), 8) == 0
-            println("Quadratic flowrate not supported - constant flowrate assumed")
-            connectionMatrix = transpose(reshape(connectionVector, 8, length(connectionVector) ÷ 8))
+        
+        # check for dynamic flow 
+        dynamic_flow = haskey(model["input"]["model"]["connections"], "CONNECTIONS_INCLUDE_DYNAMIC_FLOW") ? read(model["input"]["model"]["connections"]["CONNECTIONS_INCLUDE_DYNAMIC_FLOW"]) : false
+        if dynamic_flow == 1
+            # if dynamic flow rates is activated, the connection vector is divisble w. 8 elements as it includes lin, quad and cub coefficients 
+            divisor = 8 
         else 
-            throw("Error in the connections readings")
-        end 
+            divisor = 5
+        end
+		connectionMatrix = transpose(reshape(connectionVector, divisor, length(connectionVector) ÷ divisor))
 
         for j = 1:size(connectionMatrix)[1] #j=1
             ID = Int64(connectionMatrix[j,1])
             sourceID = "unit_00$ID"
-			if ID > 9
-                sourceID = "unit_0$ID"
-            elseif ID > 99
-                sourceID = "unit_$ID"
-            end
-			
             ID = Int64(connectionMatrix[j,2])
             sinkID = "unit_00$ID"
-			if ID > 9
-                sinkID = "unit_0$ID"
-            elseif ID > 99
-                sinkID = "unit_$ID"
-            end
 
             source = units[sourceID]
             sink = units[sinkID]
@@ -659,6 +652,25 @@ function create_units(model::HDF5.File)
                 u = 0.1 # value not used anyway if outlets are sinks 
             end
 
+            # if dynamic flow is activated and matrix is specified 
+			if dynamic_flow == true
+				if length(connectionMatrix[j,:]) == 8 
+					Q_c = connectionMatrix[j,5]
+					Q_l = connectionMatrix[j,6]
+					Q_q = connectionMatrix[j,7]
+					Q_cube = connectionMatrix[j,8]
+					dynamic_flow_check = true
+				else 
+					throw("Incorrect flow specification")
+                end
+			else
+				Q_c = 0.0
+				Q_l = 0.0
+				Q_q = 0.0
+				Q_cube = 0.0
+				dynamic_flow_check = false
+			end
+
             # add connection 
             Connection(
                         switches, # Switches that must be modified and used in the simulator 
@@ -666,7 +678,12 @@ function create_units(model::HDF5.File)
                         read(model["input"]["model"]["connections"][switchIterator]["SECTION"])+1, #section 
                         source, # Source 
                         sink, # Unit sink 
-                        u # Velocity 
+                        u, # Velocity 
+                        Q_c,
+						Q_l,
+						Q_q,
+						Q_cube,
+						dynamic_flow_check
                         ) 
         end  
     end  

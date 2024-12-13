@@ -45,7 +45,7 @@ mutable struct cstr
 		solution_times = Float64[]
 
 
-		new(nComp, Float64.(V), cIn, Float64.(c0), unitStride, solution_outlet, solution_times)
+		new(nComp, V, cIn, c0, unitStride, solution_outlet, solution_times)
 	end
 end
 
@@ -55,6 +55,9 @@ end
 function compute!(RHS, RHS_q, cpp, qq, x, m::cstr, t, section, sink, switches, idx_units) 
 	# section = i from call 
 	# sink is the unit i.e., h from previous call
+	
+	# Determining inlet velocity if specified dynamically
+	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
     
 	# Loop over components
 	@inbounds for j = 1:m.nComp

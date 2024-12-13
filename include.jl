@@ -24,6 +24,7 @@ using IncompleteLU
 # Include the Julia functions
 include(joinpath(rel_path,"src", "isotherms", "binding_base.jl"))
 include(joinpath(rel_path,"src", "DG", "model_base.jl"))
+include(joinpath(rel_path,"src", "utils", "flow_rates.jl"))
 include(joinpath(rel_path,"src", "utils", "cstr.jl"))
 include(joinpath(rel_path,"src", "utils", "connections.jl"))
 include(joinpath(rel_path,"src", "utils", "file_reader.jl"))
