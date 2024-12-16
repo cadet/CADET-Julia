@@ -215,16 +215,6 @@ solve_model(
 using CSV,DataFrames 
 c_analytical = CSV.read((joinpath(@__DIR__,"SMB_LRM_Langmuir_semi_analytical.csv")),DataFrame)
 
-using Plots
-plot(c_analytical[1:1601,"C0_E"])
-plot!(c_analytical[1:1601,"C1_E"])
-plot!(outlets[1].solution_outlet[:,1])
-plot!(outlets[1].solution_outlet[:,2])
-
-plot(c_analytical[1:1601,"C0_R"])
-plot!(c_analytical[1:1601,"C1_R"])
-plot!(outlets[2].solution_outlet[:,1])
-plot!(outlets[2].solution_outlet[:,2])
 
 err = [0.0]
 for i =1:columns[1].nComp 

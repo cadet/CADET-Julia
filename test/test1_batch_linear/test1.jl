@@ -97,9 +97,6 @@ solve_model(
 			alg = QNDF(autodiff=false), # Defaults to alg = QNDF(autodiff=false)
 			)
 
-using Plots
-plot(columns[1].solution_outlet[:,1])
-
 # Compare to analytical solution 
 using CSV,DataFrames 
 c_analytical = CSV.read((joinpath(@__DIR__,"Analytical_LRM_Linear.csv")),DataFrame)

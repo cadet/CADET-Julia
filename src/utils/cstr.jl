@@ -10,7 +10,7 @@ mutable struct cstr
 
 	nComp::Int64
 	V::Float64
-	cIn::Float64
+	cIn::Vector{Float64}
 	
 	c0::Union{Float64, Vector{Float64}, Int64} # defaults to 0
 	unitStride::Int64
@@ -37,7 +37,7 @@ mutable struct cstr
 		else 
 			throw(error("Initial concentrations incorrectly written"))
 		end
-		cIn = 0.0
+		cIn = [0.0]
 		unitStride = nComp
 		
 		# Solution_outlet as well 
@@ -63,15 +63,9 @@ function compute!(RHS, RHS_q, cpp, qq, x, m::cstr, t, section, sink, switches, i
 	@inbounds for j = 1:m.nComp
 
 		# Determining inlet concentration 
-		# inletConcentrations!(m.cIn, switches, j, switch, sink, x, t, idx_units) 
-		m.cIn = ((switches.ConnectionInstance.cIn_c[section,sink, j] + 
-					switches.ConnectionInstance.cIn_l[section,sink, j]*t +
-					switches.ConnectionInstance.cIn_q[section,sink, j]*t^2 +
-					switches.ConnectionInstance.cIn_cube[section,sink, j]*t^3) * switches.ConnectionInstance.u_inlet[switches.switchSetup[section], sink] +
-					switches.ConnectionInstance.u_unit[switches.switchSetup[section], sink] * switches.ConnectionInstance.c_connect[switches.switchSetup[section], sink, j] * x[switches.ConnectionInstance.idx_connect[switches.switchSetup[section], sink, j]]) / 
-					switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink]
+		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t) 
 
-		RHS[j + idx_units[sink]] = switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink] / m.V * (m.cIn - x[j + idx_units[sink]])
+		RHS[j + idx_units[sink]] = switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink] / m.V * (m.cIn[1] - x[j + idx_units[sink]])
 	end
 	
     nothing

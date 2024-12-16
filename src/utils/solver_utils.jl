@@ -150,6 +150,16 @@ mutable struct SolverCache
 end
 
 function rearrange_switch_setup(switches)
+	"""
+		A function to rearrange the switchSetup such that it follows a repeated pattern.
+		Inputs are:
+		switches: The switches object
+
+		Outputs are:
+		a: The rearranged switchSetup
+
+		If there is only one switch, it copy the switches for the number of section times.
+	"""
 	a = -ones(Int64,length(switches.switchSetup))
 
 	#if there is only one switch
