@@ -129,6 +129,16 @@ mutable struct Connection
 	Q_unit_cube::Vector{Vector{Vector{Float64}}}
 	dynamic_flow 
 
+	Q_inlet_c::Array{Float64,2} # Inlet flow rates for each switch, unit/sink
+    Q_inlet_l::Array{Float64,2}
+	Q_inlet_q::Array{Float64,2}
+	Q_inlet_cube::Array{Float64,2}
+	Q_unit_c::Array{Float64,2} 
+    Q_unit_l::Array{Float64,2}
+	Q_unit_q::Array{Float64,2}
+	Q_unit_cube::Array{Float64,2}
+	dynamic_flow 
+
 	# For these cosntructors, we cannot use keyword arguments when having multiple constructors 
 	
 	# If an inlet is specified as input
@@ -237,6 +247,15 @@ mutable struct Connection
 
 			# Indexing of the connection matrix 
 			push!(switches.ConnectionInstance.idx_connect[switch][sink][j], j + switches.idx_units[columnNumber])
+		end
+		
+		# If dynamic flow has been specified 
+		if dynamic_flow_check == true
+			switches.ConnectionInstance.dynamic_flow[switch, sink] = YesDynamicFlow()
+			switches.ConnectionInstance.Q_unit_c[switch, sink] = Q_c
+			switches.ConnectionInstance.Q_unit_l[switch, sink] = Q_l
+			switches.ConnectionInstance.Q_unit_q[switch, sink] = Q_q
+			switches.ConnectionInstance.Q_unit_cube[switch, sink] = Q_cube
 		end
 		
 		# If dynamic flow has been specified 

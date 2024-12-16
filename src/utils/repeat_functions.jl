@@ -65,7 +65,7 @@ function repeat_pattern(cIn, switchSetup, nSwitches)
 	else
 		repetitions = div(nrows, idx)
 		remainder = mod(nrows, idx)
-		
+
 		repeated_pattern = repeat(pattern, repetitions)
 		remainder_pattern = pattern[1:remainder][:][:] # view(pattern, 1:remainder, :, :)
 
