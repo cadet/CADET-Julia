@@ -129,15 +129,6 @@ mutable struct Connection
 	Q_unit_cube::Vector{Vector{Vector{Float64}}}
 	dynamic_flow 
 
-	Q_inlet_c::Array{Float64,2} # Inlet flow rates for each switch, unit/sink
-    Q_inlet_l::Array{Float64,2}
-	Q_inlet_q::Array{Float64,2}
-	Q_inlet_cube::Array{Float64,2}
-	Q_unit_c::Array{Float64,2} 
-    Q_unit_l::Array{Float64,2}
-	Q_unit_q::Array{Float64,2}
-	Q_unit_cube::Array{Float64,2}
-	dynamic_flow 
 
 	# For these cosntructors, we cannot use keyword arguments when having multiple constructors 
 	
