@@ -38,8 +38,8 @@ function repeat_pattern(a::Vector{Int64})
 	return vec(vcat(repeated_pattern, remainder_pattern))
 end
 
-# Repeat pattern from a certain idx specification 
-function repeat_pattern(cIn::Array{Float64}, switchSetup, nSwitches) 	
+# Repeat pattern from a certain idx specification cIn = switches.ConnectionInstance.cIn_c
+function repeat_pattern(cIn, switchSetup, nSwitches) 	
     
     length_last_cycle = 1
     idx = 0
@@ -59,15 +59,15 @@ function repeat_pattern(cIn::Array{Float64}, switchSetup, nSwitches)
     
 	# now it should repeat the pattern as many times as possible 
 	nrows = size(cIn)[1]
-	pattern = view(cIn, 1:idx, :, :)
+	pattern = cIn[1:idx][:][:] # view(cIn, 1:idx, :, :)
 	if idx == 0
 		return cIn
 	else
 		repetitions = div(nrows, idx)
 		remainder = mod(nrows, idx)
 		
-		repeated_pattern = repeat(pattern, repetitions, 1)
-		remainder_pattern = view(pattern, 1:remainder, :, :)
+		repeated_pattern = repeat(pattern, repetitions)
+		remainder_pattern = pattern[1:remainder][:][:] # view(pattern, 1:remainder, :, :)
 
 		return vcat(repeated_pattern, remainder_pattern)
 	end

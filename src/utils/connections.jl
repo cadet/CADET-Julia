@@ -106,27 +106,27 @@ end
 
 mutable struct Connection	
 
-	u_unit::Matrix{Float64} # Inlet comming from another unit
-	u_inlet::Matrix{Float64} # Inlet comming an inlet
+	u_unit::Vector{Vector{Vector{Float64}}} # Inlet comming from another unit i.e. switch, unit(sink), value
+	u_inlet::Vector{Vector{Vector{Float64}}} # Inlet comming an inlet i.e. switch, unit(sink), value
 	u_tot::Matrix{Float64} # sum of u_unit and u_inlet, defaults to -1 to avoid dividing with zero and to check whether a switch is specified 
-	c_connect::Array{Float64,3} # Connections for each switch, unit and component
-	idx_connect::Array{Int64,3} # Connection indices for each switch, unit and component
+	c_connect::Vector{Vector{Vector{Vector{Int64}}}} # Connections for each switch, unit(sink), component, value (1 or 0)
+	idx_connect::Vector{Vector{Vector{Vector{Int64}}}} # Connection indices for each switch, unit(sink), component, value (index)
 	# For the concentration specifications, they should replace the latest used for the switch time. 
 	# So if inlet 1 is specified for section 1, it is the same for section 2 unless anything else is specified 
 	# for the switches, they should follow a repeated pattern like for an SMB such that you only have to specify a cycle once
-	cIn_c::Array{Float64,3} # Concentrations for each switch, unit and component
-    cIn_l::Array{Float64,3}
-	cIn_q::Array{Float64,3}
-	cIn_cube::Array{Float64,3}
+	cIn_c::Vector{Vector{Vector{Vector{Float64}}}} # Concentrations for each switch, unit(sink), component, value
+    cIn_l::Vector{Vector{Vector{Vector{Float64}}}}
+	cIn_q::Vector{Vector{Vector{Vector{Float64}}}}
+	cIn_cube::Vector{Vector{Vector{Vector{Float64}}}}
 
-	Q_inlet_c::Array{Float64,2} # Inlet flow rates for each switch, unit/sink
-    Q_inlet_l::Array{Float64,2}
-	Q_inlet_q::Array{Float64,2}
-	Q_inlet_cube::Array{Float64,2}
-	Q_unit_c::Array{Float64,2} 
-    Q_unit_l::Array{Float64,2}
-	Q_unit_q::Array{Float64,2}
-	Q_unit_cube::Array{Float64,2}
+	Q_inlet_c::Vector{Vector{Vector{Float64}}} # Inlet flow rates for each switch, unit(sink), value
+    Q_inlet_l::Vector{Vector{Vector{Float64}}}
+	Q_inlet_q::Vector{Vector{Vector{Float64}}}
+	Q_inlet_cube::Vector{Vector{Vector{Float64}}}
+	Q_unit_c::Vector{Vector{Vector{Float64}}} 
+    Q_unit_l::Vector{Vector{Vector{Float64}}}
+	Q_unit_q::Vector{Vector{Vector{Float64}}}
+	Q_unit_cube::Vector{Vector{Vector{Float64}}}
 	dynamic_flow 
 
 	# For these cosntructors, we cannot use keyword arguments when having multiple constructors 
@@ -139,16 +139,21 @@ mutable struct Connection
 		switches.switchSetup[section] = switch
 		
 		# The inlet flux is and u_tot are modified 
-		switches.ConnectionInstance.u_inlet[switch, sink] = u
-		switches.ConnectionInstance.u_tot[switch, sink] = switches.ConnectionInstance.u_inlet[switch, sink] + switches.ConnectionInstance.u_unit[switch, sink]
+		push!(switches.ConnectionInstance.u_inlet[switch][sink], u)
+		switches.ConnectionInstance.u_tot[switch, sink] += u
 
 		# The section specifications from the inlet should be copied 
-		# switches.ConnectionInstance.cIn[section, sink, comp]
+		# if there are multiple sections but only one switch, fill out all the sections with the same values
 		if switches.nSwitches<2
-			switches.ConnectionInstance.cIn_c[:, sink, :] = source.cIn_c[:,:]
-			switches.ConnectionInstance.cIn_l[:, sink, :] = source.cIn_l[:,:]
-			switches.ConnectionInstance.cIn_q[:, sink, :] = source.cIn_q[:,:]
-			switches.ConnectionInstance.cIn_cube[:, sink, :] = source.cIn_cube[:,:]
+			# Set inlet concentration
+			for i in 1:length(switches.ConnectionInstance.cIn_c) # For each section
+				for j in 1:length(switches.ConnectionInstance.cIn_c[i][sink]) # for each component
+						push!(switches.ConnectionInstance.cIn_c[i][sink][j], source.cIn_c[i, j])
+						push!(switches.ConnectionInstance.cIn_l[i][sink][j], source.cIn_l[i, j])
+						push!(switches.ConnectionInstance.cIn_q[i][sink][j], source.cIn_q[i, j])
+						push!(switches.ConnectionInstance.cIn_cube[i][sink][j], source.cIn_cube[i, j])
+				end
+			end
 
 		else
 			# In between two section times and 1 switch, it will assume previous switch and repeat that. 
@@ -160,21 +165,23 @@ mutable struct Connection
 			# If [switch1, switch2, ?, ?, ?] is specified, 
 			# the result is [switch1, switch2, switch1, switch2, switch1]
 
-			# # Set inlet concentration 
-			switches.ConnectionInstance.cIn_c[section, sink, :] = source.cIn_c[section, :]
-			switches.ConnectionInstance.cIn_l[section, sink, :] = source.cIn_l[section, :]
-			switches.ConnectionInstance.cIn_q[section, sink, :] = source.cIn_q[section, :]
-			switches.ConnectionInstance.cIn_cube[section, sink, :] = source.cIn_cube[section, :]
+			# Set inlet concentration 
+			for j in 1:length(switches.ConnectionInstance.cIn_c[section][sink]) # for each component
+				push!(switches.ConnectionInstance.cIn_c[section][sink][j], source.cIn_c[section, j])
+				push!(switches.ConnectionInstance.cIn_l[section][sink][j], source.cIn_l[section, j])
+				push!(switches.ConnectionInstance.cIn_q[section][sink][j], source.cIn_q[section, j])
+				push!(switches.ConnectionInstance.cIn_cube[section][sink][j], source.cIn_cube[section, j])
+			end
 			
 		end
 
 		# If dynamic flow has been specified 
 		if dynamic_flow_check == true
 			switches.ConnectionInstance.dynamic_flow[switch, sink] = YesDynamicFlow()
-			switches.ConnectionInstance.Q_inlet_c[switch, sink] = Q_c
-			switches.ConnectionInstance.Q_inlet_l[switch, sink] = Q_l
-			switches.ConnectionInstance.Q_inlet_q[switch, sink] = Q_q
-			switches.ConnectionInstance.Q_inlet_cube[switch, sink] = Q_cube
+			push!(switches.ConnectionInstance.Q_inlet_c[switch][sink], Q_c)
+			push!(switches.ConnectionInstance.Q_inlet_l[switch][sink], Q_l)
+			push!(switches.ConnectionInstance.Q_inlet_q[switch][sink], Q_q)
+			push!(switches.ConnectionInstance.Q_inlet_cube[switch][sink], Q_cube)
 		end
 	end
 	
@@ -187,23 +194,25 @@ mutable struct Connection
 		# The switchSetup is set to a section 
 		switches.switchSetup[section] = switch
 		
-		# Here the matrix should be edited
-		# edit u_total, Q and C_connect 
-		switches.ConnectionInstance.u_unit[switch, sink] = u
-		switches.ConnectionInstance.u_tot[switch, sink] = switches.ConnectionInstance.u_inlet[switch, sink] + switches.ConnectionInstance.u_unit[switch, sink]
-		switches.ConnectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
-		for j in 1:model.nComp 
-			# The following line assumes all transport models have the same discretization! 
-			switches.ConnectionInstance.idx_connect[switch, sink, j] = model.bindStride + (j-1) * model.bindStride + switches.idx_units[columnNumber]
+		# Set inlet velocities 
+		push!(switches.ConnectionInstance.u_unit[switch][sink], u)
+		switches.ConnectionInstance.u_tot[switch, sink] += u
+
+		# Connection matrix and indices should be edited
+		for j =1:model.nComp
+			push!(switches.ConnectionInstance.c_connect[switch][sink][j], 1.0) # connection matrix, should be edited if some components are not connected
+
+			# Indexing of the connection matrix
+			push!(switches.ConnectionInstance.idx_connect[switch][sink][j], model.bindStride + (j-1) * model.bindStride + switches.idx_units[columnNumber])
 		end
-		
+
 		# If dynamic flow has been specified 
 		if dynamic_flow_check == true
 			switches.ConnectionInstance.dynamic_flow[switch, sink] = YesDynamicFlow()
-			switches.ConnectionInstance.Q_unit_c[switch, sink] = Q_c
-			switches.ConnectionInstance.Q_unit_l[switch, sink] = Q_l
-			switches.ConnectionInstance.Q_unit_q[switch, sink] = Q_q
-			switches.ConnectionInstance.Q_unit_cube[switch, sink] = Q_cube
+			push!(switches.ConnectionInstance.Q_unit_c[switch][sink], Q_c)
+			push!(switches.ConnectionInstance.Q_unit_l[switch][sink], Q_l)
+			push!(switches.ConnectionInstance.Q_unit_q[switch][sink], Q_q)
+			push!(switches.ConnectionInstance.Q_unit_cube[switch][sink], Q_cube)
 		end
 		
 	end
@@ -219,11 +228,15 @@ mutable struct Connection
 		
 		# Here the matrix should be edited
 		# edit u_total, Q and C_connect 
-		switches.ConnectionInstance.u_unit[switch, sink] = u
-		switches.ConnectionInstance.u_tot[switch, sink] = switches.ConnectionInstance.u_inlet[switch, sink] + switches.ConnectionInstance.u_unit[switch, sink]
-		switches.ConnectionInstance.c_connect[switch, sink,:] =  ones(Float64,model.nComp) # connection matrix 
-		for j in 1:model.nComp 
-			switches.ConnectionInstance.idx_connect[switch, sink, j] = j + switches.idx_units[columnNumber]
+		push!(switches.ConnectionInstance.u_unit[switch][sink], u)
+		switches.ConnectionInstance.u_tot[switch, sink] += u
+
+		# Connection matrix and indices should be edited
+		for j =1:model.nComp
+			push!(switches.ConnectionInstance.c_connect[switch][sink][j], 1.0) # connection matrix, should be edited if some components are not connected
+
+			# Indexing of the connection matrix 
+			push!(switches.ConnectionInstance.idx_connect[switch][sink][j], j + switches.idx_units[columnNumber])
 		end
 		
 		# If dynamic flow has been specified 
@@ -241,25 +254,25 @@ mutable struct Connection
 	function Connection(nSections::Int64, nSwitches::Int64, nComp::Int64, nColumns::Int64)
 		
 		# Here the matrix should be edited
-		u_unit = zeros(Float64, nSwitches, nColumns)
-		u_inlet = zeros(Float64, nSwitches, nColumns)
-		u_tot = -ones(Float64, nSwitches, nColumns) 
-		c_connect =  zeros(Float64, nSwitches, nColumns, nComp)
-		idx_connect = ones(Int64, nSwitches, nColumns, nComp)
-		cIn_c = zeros(Float64, nSections, nColumns, nComp)
-		cIn_l = zeros(Float64, nSections, nColumns, nComp)
-		cIn_q = zeros(Float64, nSections, nColumns, nComp)
-		cIn_cube = zeros(Float64, nSections, nColumns, nComp)
+		u_unit = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+        u_inlet = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+		u_tot = zeros(Float64, nSwitches, nColumns) 
+		c_connect =  [ [ [ Float64[] for _ in 1:nComp ] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+		idx_connect = [ [ [ Int64[] for _ in 1:nComp ] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+		cIn_c = [ [ [ Float64[] for _ in 1:nComp ] for _ in 1:nColumns ] for _ in 1:nSections ]
+		cIn_l = [ [ [ Float64[] for _ in 1:nComp ] for _ in 1:nColumns ] for _ in 1:nSections ]
+		cIn_q = [ [ [ Float64[] for _ in 1:nComp ] for _ in 1:nColumns ] for _ in 1:nSections ]
+		cIn_cube = [ [ [ Float64[] for _ in 1:nComp ] for _ in 1:nColumns ] for _ in 1:nSections ]
 		
 		# For dynamic flow specifications 
-		Q_inlet_c = zeros(Float64, nSwitches, nColumns) # Inlet flow rates for each switch, unit, defaults to zeros 
-		Q_inlet_l = zeros(Float64, nSwitches, nColumns)
-		Q_inlet_q = zeros(Float64, nSwitches, nColumns)
-		Q_inlet_cube = zeros(Float64, nSwitches, nColumns)
-		Q_unit_c = zeros(Float64, nSwitches, nColumns) 
-		Q_unit_l = zeros(Float64, nSwitches, nColumns)
-		Q_unit_q = zeros(Float64, nSwitches, nColumns)
-		Q_unit_cube = zeros(Float64, nSwitches, nColumns)
+		Q_inlet_c = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ] # Inlet flow rates for each switch, unit, defaults to zeros 
+		Q_inlet_l = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+		Q_inlet_q = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+		Q_inlet_cube = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+		Q_unit_c = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+		Q_unit_l = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+		Q_unit_q = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ]
+		Q_unit_cube = [ [ Float64[] for _ in 1:nColumns ] for _ in 1:nSwitches ]
 		dynamic_flow = Array{Any}(undef, nSwitches, nColumns)
 		for i in 1:nSwitches, j in 1:nColumns
 			dynamic_flow[i,j] = NoDynamicFlow()
