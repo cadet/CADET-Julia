@@ -117,9 +117,25 @@ mutable struct PoreOp
 	end
 end
 
+abstract type InletConditions end
+# A function to determine the interstitial velocities. 
+# If only the inlet velocity has been specified, it does nothing 
+# If dynamic flow rates has been activated, it determines the flow rates based on the time and the values of the coefficients. 
+
+struct DynamicInlets <: InletConditions end
+struct StaticInlets <: InletConditions end
+
+function inlet_concentrations!(cIn, switches, j, section, sink, x, t, inlet_type::StaticInlets)
+    """ 
+        There are static inlets, the function does not and the inlet concentration is given as cIn.
+    """
+
+    nothing 
+end
+
 # A function that determines the inlet concentrations needed for the transport equations 
 # Depends on the inlets specified in the switches
-function inlet_concentrations!(cIn, switches, j, section, sink, x, t)
+function inlet_concentrations!(cIn, switches, j, section, sink, x, t, inlet_type::DynamicInlets)
 	"""
 		A function that determines the inlet concentrations needed for the transport equations. 
 		Depends on the inlets specified in the switches. 
@@ -137,24 +153,24 @@ function inlet_concentrations!(cIn, switches, j, section, sink, x, t)
 		
 	"""
 	# Restarting the inlet concentration
-	cIn[1] = 0.0
+	cIn[j] = 0.0
     
 	# Inlets from inlets
-	for l in eachindex(switches.ConnectionInstance.cIn_c[section][sink][j])
-		cIn[1] += (switches.ConnectionInstance.cIn_c[section][sink][j][l] + 
+	@inbounds for l in eachindex(switches.ConnectionInstance.cIn_c[section][sink][j])
+		cIn[j] += (switches.ConnectionInstance.cIn_c[section][sink][j][l] + 
 			switches.ConnectionInstance.cIn_l[section][sink][j][l]*t +
 			switches.ConnectionInstance.cIn_q[section][sink][j][l]*t^2 +
 			switches.ConnectionInstance.cIn_cube[section][sink][j][l]*t^3) * switches.ConnectionInstance.u_inlet[switches.switchSetup[section]][sink][l]
 	end
 
 	# Inlets from other units 
-	for l in eachindex(switches.ConnectionInstance.c_connect[switches.switchSetup[section]][sink][j])
+	@inbounds for l in eachindex(switches.ConnectionInstance.c_connect[switches.switchSetup[section]][sink][j])
 		# println("section = $section, sink = $sink, j = $j, l = $l")
-		cIn[1] += switches.ConnectionInstance.u_unit[switches.switchSetup[section]][sink][l] * switches.ConnectionInstance.c_connect[switches.switchSetup[section]][sink][j][l] * x[switches.ConnectionInstance.idx_connect[switches.switchSetup[section]][sink][j][l]]
+		cIn[j] += switches.ConnectionInstance.u_unit[switches.switchSetup[section]][sink][l] * switches.ConnectionInstance.c_connect[switches.switchSetup[section]][sink][j][l] * x[switches.ConnectionInstance.idx_connect[switches.switchSetup[section]][sink][j][l]]
 	end 
 
 	# Divide by total velocity according to mass balance 
-	cIn[1] /= switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink]
+	cIn[j] /= switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink]
 	nothing
 end
 
@@ -228,7 +244,7 @@ mutable struct LRM <: ModelBase
 		RHS_q = zeros(Real, ConvDispOpInstance.nPoints * nComp)
 		qq = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
 		RHS = zeros(Real, adsStride + 2*nComp*bindStride)
-		cIn = [0.0]
+		cIn = zeros(Float64, nComp)
 	
 		# if the axial dispersion is specified for a single component, assume they are the same for all components
 		if typeof(d_ax) == Float64 
@@ -275,11 +291,11 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::LRM, t, section, sink, switch
 		m.idx =  1 + (j-1) * m.ConvDispOpInstance.nPoints : m.ConvDispOpInstance.nPoints + (j-1) * m.ConvDispOpInstance.nPoints
 
 		# Determining inlet concentration 
-		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t) 
+		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j]) 
 
 		# Convection Dispersion term
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase #
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn[1], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 		# Mobile phase RHS 
 		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * RHS_q[m.idx]
@@ -355,7 +371,7 @@ mutable struct LRMP <: ModelBase
 		RHS_q = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
 		RHS = zeros(Float64, adsStride + 2*nComp*bindStride)
 		qq = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
-		cIn = [0.0]
+		cIn = zeros(Float64, nComp)
 	
 		# if the axial dispersion is specified for a single component, assume they are the same for all components
 		if typeof(d_ax) == Float64 
@@ -407,12 +423,12 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::LRMP, t, section, sink, switc
 
 		
 		# Determining inlet concentration 
-		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t) 
+		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j]) 
 		
 		# Convection Dispersion term	
 		# m.cpp = @view x[m.idx .+ idx_units[sink]] # mobile phase
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase		
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn[1], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 		# Mobile phase
 		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
@@ -493,7 +509,7 @@ mutable struct GRM <: ModelBase
 		Fc = (1-eps_c)/eps_c
 		Fp = (1-eps_p)/eps_p
 		Fjac = Fp 				# The phase ratio used for Jacobian i.e., dcdc = Fjac * dqdc
-		cIn = [0.0]
+		cIn = zeros(Float64, nComp)
 	
 		# if the axial dispersion is specified for a single component, assume they are the same for all components
 		if typeof(d_ax) == Float64 
@@ -572,12 +588,12 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::GRM, t, section, sink, switch
 		m.idx =  1 + (j-1) * m.ConvDispOpInstance.nPoints : m.ConvDispOpInstance.nPoints + (j-1) * m.ConvDispOpInstance.nPoints
 		
 		# Determining inlet concentration 
-		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t) 
+		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j]) 
 
 		
 		# Convection Dispersion term	
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp] # mobile phase
-		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn[1], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
+		ConvDispOperatorDG.residualImpl!(m.ConvDispOpInstance.Dh, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nPoints, m.ConvDispOpInstance.nNodes, m.nCells, m.ConvDispOpInstance.deltaZ, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_ax[j], m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.h_star, m.ConvDispOpInstance.Dc, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1, m.exactInt)
 
 
 		#Surface flux to the particles 

@@ -144,6 +144,21 @@ mutable struct SolverCache
 			end
 		end
 
+		# The inlet conditions are set up as either dynamic or static inlets.
+		# if any dynamic concentrations, dynamic flows or units are connected, we have dynamic inlets, otherwise static inlets.
+		# The inlet concentrations are determined at each section. 
+		for section = 1:switches.nSections #section
+			for sink in eachindex(columns) #unit
+				for k = 1:columns[1].nComp #component
+					if sum(switches.ConnectionInstance.cIn_l[section][sink][k]) != 0.0 || sum(switches.ConnectionInstance.cIn_q[section][sink][k]) != 0.0 || sum(switches.ConnectionInstance.cIn_cube[section][sink][k]) != 0.0 || sum(switches.ConnectionInstance.u_unit[switches.switchSetup[section]][sink]) > 0.0 || typeof(switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink]) == YesDynamicFlow
+						switches.inlet_conditions[section, sink, k] = DynamicInlets()
+					else 
+						switches.inlet_conditions[section, sink, k] = StaticInlets()
+					end
+				end
+			end				 
+		end
+
 		
 		new(x0, abstol, reltol, dt, solution_times, prototypeJacobian, analyticalJacobian, idx_units, nColumns)
 	end
