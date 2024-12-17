@@ -323,13 +323,15 @@ mutable struct Switches
 
 	ConnectionInstance::Connection 
 	idx_units::Vector{Int64}
+	inlet_conditions::Array{InletConditions, 3}
 	
 	function Switches(; nSections::Int64, section_times::Vector{Float64}, nSwitches::Int64, nColumns::Int64, nComp::Int64, idx_units::Vector{Int64})
 	
 		# Establish default zero configuration
 		ConnectionInstance = Connection(nSections, nSwitches, nComp, nColumns) # connection(nSections = nSections, nComp = nComp, nColumns = nColumns)
 		switchSetup = -ones(Int64,nSections)
+		inlet_conditions = fill(StaticInlets(), nSections, nColumns, nComp)
 	
-		new(nSections, section_times, nSwitches, switchSetup, ConnectionInstance, idx_units)
+		new(nSections, section_times, nSwitches, switchSetup, ConnectionInstance, idx_units, inlet_conditions)
 	end
 end

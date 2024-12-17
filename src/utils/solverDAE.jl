@@ -31,6 +31,13 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 		analytical_jac = nothing
 		fill!(dx0, 0.0)
 		p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)
+
+		# Update inlet concentrations at for new section for each unit. If they are static, they are not updated in RHS 
+		@inbounds for sink = 1:solverOptions.nColumns 
+			@inbounds for j=1:columns[sink].nComp
+				inlet_concentrations!(columns[sink].cIn, switches, j, i, sink, solverOptions.x0, 0.0, DynamicInlets()) 
+			end 
+		end
 		
 		# If Analytical Jacobian == yes, set analytical Jacobian
 		if solverOptions.analyticalJacobian == true

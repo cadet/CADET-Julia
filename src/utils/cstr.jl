@@ -63,7 +63,7 @@ function compute!(RHS, RHS_q, cpp, qq, x, m::cstr, t, section, sink, switches, i
 	@inbounds for j = 1:m.nComp
 
 		# Determining inlet concentration 
-		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t) 
+		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j]) 
 
 		RHS[j + idx_units[sink]] = switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink] / m.V * (m.cIn[1] - x[j + idx_units[sink]])
 	end
