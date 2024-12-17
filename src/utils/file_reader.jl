@@ -91,7 +91,7 @@ function create_units(model::Union{Dict, OrderedDict})
 									# save_output = true, # defaults to true
 									polyDeg = value["discretization"]["polyDeg"], # defaults to 4
 									nCells = value["discretization"]["ncol"], # defaults to 8
-									exactInt = value["discretization"]["exact_integration"], # 
+									exact_integration = value["discretization"]["exact_integration"], # 
                                     cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
 									)
 				column_instance.bind = get_bind(value,column_instance.bindStride)
@@ -115,7 +115,7 @@ function create_units(model::Union{Dict, OrderedDict})
                                         q0 = value["init_q"],
                                         polyDeg = value["discretization"]["polyDeg"], # defaults to 4
                                         nCells = value["discretization"]["ncol"], # defaults to 8
-                                        exactInt = value["discretization"]["exact_integration"],
+                                        exact_integration = value["discretization"]["exact_integration"],
                                         cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
                                         )
 				column_instance.bind = get_bind(value,column_instance.bindStride)
@@ -143,7 +143,7 @@ function create_units(model::Union{Dict, OrderedDict})
                                         polyDeg = value["discretization"]["polyDeg"], # defaults to 4
                                         polyDegPore = value["discretization"]["polyDegPore"], # defaults to 4
                                         nCells = value["discretization"]["ncol"], # defaults to 8
-                                        exactInt = value["discretization"]["exact_integration"],
+                                        exact_integration = value["discretization"]["exact_integration"],
                                         cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0 
                                         )
 				column_instance.bind = get_bind(value,column_instance.bindStride)
@@ -481,7 +481,7 @@ function create_units(model::HDF5.File)
 									# save_output = true, # defaults to true
 									polyDeg = convert(Int64,read(value["discretization"]["POLYDEG"])), # defaults to 4
 									nCells = convert(Int64,read(value["discretization"]["NELEM"])), # defaults to 8
-									exactInt = read(value["discretization"]["EXACT_INTEGRATION"]), 
+									exact_integration = read(value["discretization"]["EXACT_INTEGRATION"]), 
                                     cross_section_area = haskey(value, "CROSS_SECTION_AREA") ? read(value["CROSS_SECTION_AREA"]) : 1.0 # 
 									)
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)
@@ -505,7 +505,7 @@ function create_units(model::HDF5.File)
                                         q0 = read(value["INIT_Q"]),
                                         polyDeg = read(value["discretization"]["POLYDEG"]), # defaults to 4
                                         nCells = read(value["discretization"]["NELEM"]), # defaults to 8
-                                        exactInt = read(value["discretization"]["EXACT_INTEGRATION"]),
+                                        exact_integration = read(value["discretization"]["EXACT_INTEGRATION"]),
                                         cross_section_area = haskey(value, "CROSS_SECTION_AREA") ? read(value["CROSS_SECTION_AREA"]) : 1.0
                                         )
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)
@@ -533,7 +533,7 @@ function create_units(model::HDF5.File)
                                         polyDeg = read(value["discretization"]["POLYDEG"]), # defaults to 4
                                         polyDegPore = read(value["discretization"]["PAR_POLYDEG"]), # defaults to 4
                                         nCells = read(value["discretization"]["NELEM"]), # defaults to 8
-                                        exactInt = read(value["discretization"]["EXACT_INTEGRATION"]), 
+                                        exact_integration = read(value["discretization"]["EXACT_INTEGRATION"]), 
                                         cross_section_area = haskey(value, "CROSS_SECTION_AREA") ? read(value["CROSS_SECTION_AREA"]) : 1.0
                                         )
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)

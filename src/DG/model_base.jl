@@ -196,7 +196,7 @@ mutable struct LRM <: ModelBase
 	
     
 	cIn::Vector{Float64}
-	exactInt::Int64
+	exactInt
 
 	polyDeg::Int64
 	nCells::Int64	
@@ -225,7 +225,7 @@ mutable struct LRM <: ModelBase
 	
 
 	# Default variables go in the arguments in the LRM(..)
-	function LRM(; nComp, colLength, d_ax, eps_c, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exactInt=1, cross_section_area=1.0)
+	function LRM(; nComp, colLength, d_ax, eps_c, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exact_integration=1, cross_section_area=1.0)
 		
 		# Get necessary variables for convection dispersion DG 
 		ConvDispOpInstance = ConvDispOp(polyDeg,nCells,colLength)
@@ -257,6 +257,13 @@ mutable struct LRM <: ModelBase
 		# Solution_outlet as well 
 		solution_outlet = zeros(Float64,1,nComp)
 		solution_times = Float64[]
+
+		# specifying the integration method for the DGSEM
+		if exact_integration == 1 || exact_integration == true
+			exactInt = ConvDispOperatorDG.exact_integration()
+		else
+			exactInt = ConvDispOperatorDG.collocation()
+		end
 
 		# Default binding - assumes linear with zero binding 
 		bind = Linear(
@@ -320,7 +327,7 @@ mutable struct LRMP <: ModelBase
 	cp0::Union{Float64, Vector{Float64}} # if not specified, defaults to c0
 	q0::Union{Float64, Vector{Float64}} # defaults to 0
 	cIn::Vector{Float64}
-	exactInt::Int64
+	exactInt
 
 
 	polyDeg::Int64
@@ -350,7 +357,7 @@ mutable struct LRMP <: ModelBase
 	bind::bindingBase
 
 	# Default variables go in the arguments in the LRM(..)
-	function LRMP(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exactInt=1, cross_section_area=1.0)
+	function LRMP(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exact_integration=1, cross_section_area=1.0)
 		
 		# Get necessary variables for convection dispersion DG 
 		ConvDispOpInstance = ConvDispOp(polyDeg,nCells,colLength)
@@ -385,6 +392,13 @@ mutable struct LRMP <: ModelBase
 		
 		# Set initial condition vectors 
 		c0, cp0, q0 = initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+
+		# specifying the integration method for the DGSEM
+		if exact_integration==1 || exact_integration == true
+			exactInt = ConvDispOperatorDG.exact_integration()
+		else
+			exactInt = ConvDispOperatorDG.collocation()
+		end
 		
 		# Solution_outlet as well 
 		solution_outlet = zeros(Float64,1,nComp)
@@ -461,7 +475,7 @@ mutable struct GRM <: ModelBase
 	cp0::Union{Float64, Vector{Float64}} # if not specified, defaults to c0
 	q0::Union{Float64, Vector{Float64}} # defaults to 0
 	cIn::Vector{Float64}
-	exactInt::Int64
+	exactInt
 
 
 	polyDeg::Int64
@@ -497,7 +511,7 @@ mutable struct GRM <: ModelBase
 	bind::bindingBase
 
 	# Default variables go in the arguments in the LRM(..)
-	function GRM(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Dp, Rc=0.0, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, polyDegPore=4, nCells=8, exactInt=1, cross_section_area=1.0)
+	function GRM(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Dp, Rc=0.0, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, polyDegPore=4, nCells=8, exact_integration=1, cross_section_area=1.0)
 		
 		# Get necessary variables for convection dispersion DG 
 		ConvDispOpInstance = ConvDispOp(polyDeg,nCells,colLength)
@@ -557,6 +571,13 @@ mutable struct GRM <: ModelBase
 		
 		# Set initial condition vectors 
 		c0, cp0, q0 = initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+
+		# specifying the integration method for the DGSEM
+		if exact_integration==1 || exact_integration == true
+			exactInt = ConvDispOperatorDG.exact_integration()
+		else
+			exactInt = ConvDispOperatorDG.collocation()
+		end
 		
 		# Default binding - assumes linear with zero binding 
 		bind = Linear(

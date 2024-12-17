@@ -6,10 +6,16 @@ module ConvDispOperatorDGAlloc
     using SpecialFunctions
     using LinearAlgebra
 
+    abstract type ExactInt end
+    # A struct to indicate whether exact integration or collocation is used
+
+    struct exact_integration <: ExactInt end
+    struct collocation <: ExactInt end
+
     
     
     #residual function as implemented in CADET Core - Convection Dispersion operator
-    @inline function residualImpl(y, idx, _strideNode,_strideCell,_nPoints,_nNodes, _nCells,_deltaZ, _polyDeg, _invWeights, _polyDerM,_invMM, u, d_ax, cIn,_exactInt = 1) #Convection Dispersion operator
+    @inline function residualImpl(y, idx, _strideNode,_strideCell,_nPoints,_nNodes, _nCells,_deltaZ, _polyDeg, _invWeights, _polyDerM,_invMM, u, d_ax, cIn,_exactInt) #Convection Dispersion operator
         #convDisp is the convection dispersion term as output
         #t is the time
         #y are the concentrations
@@ -146,51 +152,64 @@ module ConvDispOperatorDGAlloc
     
     
     # calculates the string form surface Integral
-    @inline function surfaceIntegral!(stateDer, state, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt = 1)
+    @inline function surfaceIntegral!(stateDer, state, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt::exact_integration)
         #This function takes stateDer and subtracts M^-1 * (C-C*) at the interfaces. Because B is a sparse matrix, it takes input and subtract M^-1 B [state - state*]
         # _exactInt = 1
-        if _exactInt == 1 # non-collocated integration -> dense mass matrix
-            @inbounds for Cell in 1:_nCells
-                @inbounds for Node in 1:_nNodes
-                    # M^-1 B [state - state*]
-                    stateDer[1 + ( (Cell-1) * strideCell_stateDer) + ( (Node-1) * strideNode_stateDer)] -=
-                    (_invMM[Node, 1]) * ((state[1 + ((Cell-1) * strideCell_state)]) - (_surfaceFlux[Cell])) - #M^-1 * (C-C*)
-                    (_invMM[Node, end]) * ((state[1 + ((Cell-1) * strideCell_state) + (_polyDeg * strideNode_state)]) - (_surfaceFlux[Cell+1])) #M^-1*(C-C*) at specific nodes
-                end
+        
+        @inbounds for Cell in 1:_nCells
+            @inbounds for Node in 1:_nNodes
+                # M^-1 B [state - state*]
+                stateDer[1 + ( (Cell-1) * strideCell_stateDer) + ( (Node-1) * strideNode_stateDer)] -=
+                (_invMM[Node, 1]) * ((state[1 + ((Cell-1) * strideCell_state)]) - (_surfaceFlux[Cell])) - #M^-1 * (C-C*)
+                (_invMM[Node, end]) * ((state[1 + ((Cell-1) * strideCell_state) + (_polyDeg * strideNode_state)]) - (_surfaceFlux[Cell+1])) #M^-1*(C-C*) at specific nodes
             end
-        else # collocated numerical integration -> diagonal mass matrix
-            @inbounds for Cell in 1:_nCells
-                #M^-1 B [state - state*]
-                stateDer[1 + ( (Cell-1) * strideCell_stateDer)] -= (_invWeights[1]) * ((state[1 + ( (Cell-1) * strideCell_stateDer)]) - (_surfaceFlux[Cell]))
-                #Last cell node
-                stateDer[1 + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)] +=
-                (_invWeights[end]) * ((state[1 + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)]) - (_surfaceFlux[Cell+1]))
+        end
+       
+        return stateDer
+    end
+
+    # calculates the string form surface Integral
+    @inline function surfaceIntegral!(stateDer, state, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt::collocation)
+        #This function takes stateDer and subtracts M^-1 * (C-C*) at the interfaces. Because B is a sparse matrix, it takes input and subtract M^-1 B [state - state*]
+        
+        # collocated numerical integration -> diagonal mass matrix
+        @inbounds for Cell in 1:_nCells
+            #M^-1 B [state - state*]
+            stateDer[1 + ( (Cell-1) * strideCell_stateDer)] -= (_invWeights[1]) * ((state[1 + ( (Cell-1) * strideCell_stateDer)]) - (_surfaceFlux[Cell]))
+            #Last cell node
+            stateDer[1 + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)] +=
+            (_invWeights[end]) * ((state[1 + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)]) - (_surfaceFlux[Cell+1]))
+        end
+        return stateDer
+    end
+
+    # calculates the string form surface Integral
+    @inline function surfaceIntegraly!(stateDer, state,idx, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt::exact_integration)
+        #This function takes stateDer and subtracts M^-1 * (C-C*) at the interfaces. Because B is a sparse matrix, it takes input and subtract M^-1 B [state - state*]
+        # _exactInt = 1
+        
+        @inbounds for Cell in 1:_nCells
+            @inbounds for Node in 1:_nNodes
+                # M^-1 B [state - state*]
+                stateDer[1 + ( (Cell-1) * strideCell_stateDer) + ( (Node-1) * strideNode_stateDer)] -=
+                (_invMM[Node, 1]) * ((state[idx[1] + ((Cell-1) * strideCell_state)]) - (_surfaceFlux[Cell])) - #M^-1 * (C-C*)
+                (_invMM[Node, end]) * ((state[idx[1] + ((Cell-1) * strideCell_state) + (_polyDeg * strideNode_state)]) - (_surfaceFlux[Cell+1])) #M^-1*(C-C*) at specific nodes
             end
         end
         return stateDer
     end
 
     # calculates the string form surface Integral
-    @inline function surfaceIntegraly!(stateDer, state,idx, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt = 1)
+    @inline function surfaceIntegraly!(stateDer, state,idx, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt::collocation)
         #This function takes stateDer and subtracts M^-1 * (C-C*) at the interfaces. Because B is a sparse matrix, it takes input and subtract M^-1 B [state - state*]
-        # _exactInt = 1
-        if _exactInt == 1 # non-collocated integration -> dense mass matrix
-            @inbounds for Cell in 1:_nCells
-                @inbounds for Node in 1:_nNodes
-                    # M^-1 B [state - state*]
-                    stateDer[1 + ( (Cell-1) * strideCell_stateDer) + ( (Node-1) * strideNode_stateDer)] -=
-                    (_invMM[Node, 1]) * ((state[idx[1] + ((Cell-1) * strideCell_state)]) - (_surfaceFlux[Cell])) - #M^-1 * (C-C*)
-                    (_invMM[Node, end]) * ((state[idx[1] + ((Cell-1) * strideCell_state) + (_polyDeg * strideNode_state)]) - (_surfaceFlux[Cell+1])) #M^-1*(C-C*) at specific nodes
-                end
-            end
-        else # collocated numerical integration -> diagonal mass matrix
-            @inbounds for Cell in 1:_nCells
-                #M^-1 B [state - state*]
-                stateDer[1 + ( (Cell-1) * strideCell_stateDer)] -= (_invWeights[1]) * ((state[idx[1] + ( (Cell-1) * strideCell_stateDer)]) - (_surfaceFlux[Cell]))
-                #Last cell node
-                stateDer[1 + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)] +=
-                (_invWeights[end]) * ((state[idx[1] + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)]) - (_surfaceFlux[Cell+1]))
-            end
+        
+        # collocated numerical integration -> diagonal mass matrix
+        @inbounds for Cell in 1:_nCells
+            #M^-1 B [state - state*]
+            stateDer[1 + ( (Cell-1) * strideCell_stateDer)] -= (_invWeights[1]) * ((state[idx[1] + ( (Cell-1) * strideCell_stateDer)]) - (_surfaceFlux[Cell]))
+            #Last cell node
+            stateDer[1 + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)] +=
+            (_invWeights[end]) * ((state[idx[1] + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)]) - (_surfaceFlux[Cell+1]))
         end
         return stateDer
     end

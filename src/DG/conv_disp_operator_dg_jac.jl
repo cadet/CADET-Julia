@@ -14,7 +14,7 @@ function DGjacobianConvBlock!(convBlock, _nNodes, u, _polyDerM, _exactInt, _invM
     if u >= 0.0 # forward flow -> Convection block additionally depends on the last entry of the previous cell
         @. @views convBlock[1:_nNodes, 2:_nNodes+1] -= _polyDerM
 
-        if _exactInt==1
+        if typeof(_exactInt)== exact_integration
             @. @views convBlock[1:_nNodes, 1] += _invMM[1:_nNodes, 1]
             @. @views convBlock[1:_nNodes, 2] -= _invMM[1:_nNodes, 1]
         else
@@ -24,7 +24,7 @@ function DGjacobianConvBlock!(convBlock, _nNodes, u, _polyDerM, _exactInt, _invM
     else # backward flow -> Convection block additionally depends on the first entry of the subsequent cell
         @. @views convBlock[1:_nNodes, 1:_nNodes] -= _polyDerM
 
-        if _exactInt==1
+        if typeof(_exactInt)== exact_integration
             @. @views convBlock[1:_nNodes, _nNodes] += _invMM[1:_nNodes, _nNodes]
             @. @views convBlock[1:_nNodes, _nNodes+1] -= _invMM[1:_nNodes, _nNodes]
         else
@@ -44,7 +44,7 @@ function getGBlock(cellIdx,_nNodes,_polyDerM,_nCells,_invMM,_deltaZ,_invWeights,
     gBlock = zeros(_nNodes, _nNodes + 2)
     @. @views gBlock[:, 2:_nNodes+1] = _polyDerM
     
-    if _exactInt ==1
+    if typeof(_exactInt)== exact_integration
         if cellIdx != 1 && cellIdx != _nCells #Eq. A.3 p. 80
             @. @views gBlock[:, 1] -= 0.5 * _invMM[:, 1]
             @. @views gBlock[:, 2] += 0.5 * _invMM[:, 1]
@@ -129,7 +129,7 @@ end
 #calculates the dispersion part of the DG jacobian
 function DGjacobianDispBlock(cellIdx,_exactInt,_nNodes,_polyDerM,_invMM,_deltaZ,_invWeights,_polyDeg,_nCells)
     
-    if _exactInt == 1
+    if typeof(_exactInt)== exact_integration
         # Inner dispersion block [ d RHS_disp / d c ], depends on the whole previous and subsequent cell plus the first entries of subsubsequent cells
         
         dispBlock = zeros(_nNodes, 3 * _nNodes + 2)
@@ -348,15 +348,15 @@ function ConvDispJacobian(model::LRM, u, p)
     if model.nCells > 1
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(2,model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) ) #Neighbor boundary disp block 
     end
-    if model.nCells > 2 && model.exactInt==1
+    if model.nCells > 2 && typeof(model.exactInt)== exact_integration
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(3,model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) ) #bulk disp block
-    elseif model.nCells > 2 && model.exactInt != 1
+    elseif model.nCells > 2 && typeof(model.exactInt) != exact_integration
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(model.nCells,model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) )
     end
-    if model.exactInt==1 && model.nCells > 3
+    if typeof(model.exactInt)== exact_integration && model.nCells > 3
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(max(4, model.nCells - 1),model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) ) #end neighbor boundary disp block
     end
-    if model.exactInt==1 && model.nCells > 4
+    if typeof(model.exactInt)== exact_integration && model.nCells > 4
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(model.nCells,model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) ) #end boundary disp block
     end
 
@@ -365,7 +365,7 @@ function ConvDispJacobian(model::LRM, u, p)
         start = 0
         compstride = (i-1) * model.ConvDispOpInstance.nNodes * model.nCells
 
-        if model.exactInt == 1
+        if typeof(model.exactInt)== exact_integration
             calcConvDispDGSEMJacobian(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, u, model.nComp, compstride)
         else
             calcConvDispCollocationDGSEMJacobian!(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, u, model.nComp,compstride)
@@ -548,15 +548,15 @@ function ConvDispJacobian(model::LRMP, u, p)
     if model.nCells > 1
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(2,model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) ) #Neighbor boundary disp block 
     end
-    if model.nCells > 2 && model.exactInt==1
+    if model.nCells > 2 && typeof(model.exactInt)== exact_integration
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(3,model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) ) #bulk disp block
-    elseif model.nCells > 2 && model.exactInt != 1
+    elseif model.nCells > 2 && typeof(model.exactInt) != exact_integration
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(model.nCells,model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) )
     end
-    if model.exactInt==1 && model.nCells > 3
+    if typeof(model.exactInt)== exact_integration && model.nCells > 3
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(max(4, model.nCells - 1),model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) ) #end neighbor boundary disp block
     end
-    if model.exactInt==1 && model.nCells > 4
+    if typeof(model.exactInt)== exact_integration && model.nCells > 4
         push!( DGjacAxDispBlocks, DGjacobianDispBlock(model.nCells,model.exactInt,model.ConvDispOpInstance.nNodes,model.ConvDispOpInstance.polyDerM,model.ConvDispOpInstance.invMM,model.ConvDispOpInstance.deltaZ,model.ConvDispOpInstance.invWeights,model.polyDeg,model.nCells) ) #end boundary disp block
     end
 
@@ -571,7 +571,7 @@ function ConvDispJacobian(model::LRMP, u, p)
         dcp = diagm( 3 / model.Rp / model.eps_p * model.kf[i] .* vec)
         # jacobian = ConvDispJac
 
-        if model.exactInt == 1
+        if typeof(model.exactInt)== exact_integration
             calcConvDispDGSEMJacobian(ConvDispJac, model.nCells, model.ConvDispOpInstance.strideCell, model.ConvDispOpInstance.strideNode, model.ConvDispOpInstance.nNodes, start, DGjacAxDispBlocks, model.d_ax[i], DGjacAxConvBlock, u, model.nComp, compstride)
 
             #Adding the transfer term
