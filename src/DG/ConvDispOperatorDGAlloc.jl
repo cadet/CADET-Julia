@@ -96,38 +96,22 @@ module ConvDispOperatorDGAlloc
         _surfaceFlux = zeros(eltype(C), _nCells + 1)
 
         # Conv.Disp. flux: h* = h*_conv + h*_disp = v c_up + 0.5 sqrt(D_ax) (S_l + S_r)
-        if u >= 0.0 # forward flow (upwind num. flux)
-            # calculate inner interface fluxes
-            @inbounds for Cell in 2:_nCells
-                # h* = h*_conv + h*_disp
-                _surfaceFlux[Cell] = u * (C[idx[1] + (Cell-1) * _strideCell - _strideNode]) - 0.5 * (-2.0 / _deltaZ) * d_ax *
-                                     ((_g[1 + (Cell-1) * _strideCell_g - _strideNode_g]) + (_g[1 + (Cell-1) * _strideCell_g])) #u*c^- - 0.5*(-2/dz)*Dax*(_g^- + _g^+) = uc + (g^- + g^+)/2
-            end
-    
-            # boundary fluxes
-            # inlet (left) boundary interface
-            _surfaceFlux[1] = u * cIn    #3.56a, cIn = _boundary[1]
-    
-            # outlet (right) boundary interface
-            _surfaceFlux[_nCells+1] = u * (C[idx[1] + _nCells * _strideCell - _strideNode]) - 0.5 * (-2.0 / _deltaZ) * d_ax *
-                                      ((_g[1 + _nCells * _strideCell_g - _strideNode_g]) + (-(_g[_nPoints]))) #u*c as the g values are subtracted, 3.56a, (-_g[_nPoints]) = _boundary[4] in Jans implementation
-
-        
-        else # backward flow (upwind num. flux)
-            # calculate inner interface fluxes
-            @inbounds for Cell in 2:_nCells
-                # h* = h*_conv + h*_disp
-                _surfaceFlux[Cell] = u * (C[idx[1] + (Cell-1) * _strideCell]) - 0.5 * (-2.0 / _deltaZ) * d_ax *
-                                     ((_g[1 + (Cell-1) * _strideCell_g - _strideNode_g]) + (_g[1 + (Cell-1) * _strideCell_g]))
-            end
-    
-            # boundary fluxes
-            # inlet boundary interface
-            _surfaceFlux[_nCells+1] = u * cIn 
-    
-            # outlet boundary interface
-            _surfaceFlux[1] = u * C[idx[1]] - 0.5 * (-2.0 / _deltaZ) * d_ax * ((_g[1]) + (-(_g[1]))) #_boundary[3] = -_g[1] compared to Jans implementation
+        # forward flow (upwind num. flux)
+         
+        # calculate inner interface fluxes
+        @inbounds for Cell in 2:_nCells
+            # h* = h*_conv + h*_disp
+            _surfaceFlux[Cell] = u * (C[idx[1] + (Cell-1) * _strideCell - _strideNode]) - 0.5 * (-2.0 / _deltaZ) * d_ax *
+                                    ((_g[1 + (Cell-1) * _strideCell_g - _strideNode_g]) + (_g[1 + (Cell-1) * _strideCell_g])) #u*c^- - 0.5*(-2/dz)*Dax*(_g^- + _g^+) = uc + (g^- + g^+)/2
         end
+
+        # boundary fluxes
+        # inlet (left) boundary interface
+        _surfaceFlux[1] = u * cIn    #3.56a, cIn = _boundary[1]
+
+        # outlet (right) boundary interface
+        _surfaceFlux[_nCells+1] = u * (C[idx[1] + _nCells * _strideCell - _strideNode]) - 0.5 * (-2.0 / _deltaZ) * d_ax *
+                                    ((_g[1 + _nCells * _strideCell_g - _strideNode_g]) + (-(_g[_nPoints]))) #u*c as the g values are subtracted, 3.56a, (-_g[_nPoints]) = _boundary[4] in Jans implementation
     
         # apply inverse mapping jacobian (reference space) u*c - 0.5*(-2/dz)*Dax*(_g^+ + _g^-) = -2/dz * (uc + (g^+ + g^-)/2) 
         @. _surfaceFlux *= 2.0 / _deltaZ    #Different from Jans code, Jan has -2/dz
