@@ -11,26 +11,15 @@ function DGjacobianConvBlock!(convBlock, _nNodes, u, _polyDerM, _exactInt, _invM
     # fill!(convBlock, 0.0)
     # convBlock = zeros(_nNodes, _nNodes + 1)
 
-    if u >= 0.0 # forward flow -> Convection block additionally depends on the last entry of the previous cell
-        @. @views convBlock[1:_nNodes, 2:_nNodes+1] -= _polyDerM
+    # forward flow -> Convection block additionally depends on the last entry of the previous cell
+    @. @views convBlock[1:_nNodes, 2:_nNodes+1] -= _polyDerM
 
-        if typeof(_exactInt)== exact_integration
-            @. @views convBlock[1:_nNodes, 1] += _invMM[1:_nNodes, 1]
-            @. @views convBlock[1:_nNodes, 2] -= _invMM[1:_nNodes, 1]
-        else
-            convBlock[1, 1] += _invWeights[1]
-            convBlock[1, 2] -= _invWeights[1]
-        end
-    else # backward flow -> Convection block additionally depends on the first entry of the subsequent cell
-        @. @views convBlock[1:_nNodes, 1:_nNodes] -= _polyDerM
-
-        if typeof(_exactInt)== exact_integration
-            @. @views convBlock[1:_nNodes, _nNodes] += _invMM[1:_nNodes, _nNodes]
-            @. @views convBlock[1:_nNodes, _nNodes+1] -= _invMM[1:_nNodes, _nNodes]
-        else
-            convBlock[_nNodes, _nNodes] += _invWeights[_nNodes]
-            convBlock[_nNodes, _nNodes+1] -= _invWeights[_nNodes]
-        end
+    if typeof(_exactInt)== exact_integration
+        @. @views convBlock[1:_nNodes, 1] += _invMM[1:_nNodes, 1]
+        @. @views convBlock[1:_nNodes, 2] -= _invMM[1:_nNodes, 1]
+    else
+        convBlock[1, 1] += _invWeights[1]
+        convBlock[1, 2] -= _invWeights[1]
     end
 
     @. convBlock *= 2 / _deltaZ
