@@ -204,7 +204,7 @@ mutable struct Connection
 			push!(switches.ConnectionInstance.c_connect[switch][sink][j], 1.0) # connection matrix, should be edited if some components are not connected
 
 			# Indexing of the connection matrix
-			push!(switches.ConnectionInstance.idx_connect[switch][sink][j], model.bindStride + (j-1) * model.bindStride + switches.idx_units[columnNumber])
+			push!(switches.ConnectionInstance.idx_connect[switch][sink][j], model.ConvDispOpInstance.nPoints + (j-1) * model.ConvDispOpInstance.nPoints + switches.idx_units[columnNumber])
 		end
 
 		# If dynamic flow has been specified 
