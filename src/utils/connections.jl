@@ -313,7 +313,7 @@ mutable struct Switches
 	# The general purpose of the switches is to determine the inlet concentrations
 	# The inlet formulation is: cin[switch, col, comp] = (u_inlet * (c_c + c_l*t +...+) + u_unit c_unit) / (u_inlet + u_unit)
 	# c_unit = c_connect * x[idx_connect] 
-	# Hence c_connect and Finlets are zero by default
+	# Hence c_connect and F_inlets are zero by default
 
 	nSections::Int64
 	section_times::Vector{Float64}
@@ -329,7 +329,7 @@ mutable struct Switches
 	
 		# Establish default zero configuration
 		ConnectionInstance = Connection(nSections, nSwitches, nComp, nColumns) # connection(nSections = nSections, nComp = nComp, nColumns = nColumns)
-		switchSetup = -ones(Int64,nSections)
+		switchSetup = ones(Int64,nSections)
 		inlet_conditions = fill(StaticInlets(), nSections, nColumns, nComp)
 	
 		new(nSections, section_times, nSwitches, switchSetup, ConnectionInstance, idx_units, inlet_conditions)
