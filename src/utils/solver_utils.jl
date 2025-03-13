@@ -150,9 +150,46 @@ mutable struct SolverCache
 		for section = 1:switches.nSections #section
 			for sink in eachindex(columns) #unit
 				for k = 1:columns[1].nComp #component
-					if sum(switches.ConnectionInstance.cIn_l[section][sink][k]) != 0.0 || sum(switches.ConnectionInstance.cIn_q[section][sink][k]) != 0.0 || sum(switches.ConnectionInstance.cIn_cube[section][sink][k]) != 0.0 || sum(switches.ConnectionInstance.u_unit[switches.switchSetup[section]][sink]) > 0.0 || typeof(switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink]) == YesDynamicFlow
+					has_dynamic_inlet = false
+            
+					# Safely check if cIn arrays have values
+					if isassigned(switches.ConnectionInstance.cIn_l, section) && 
+					   isassigned(switches.ConnectionInstance.cIn_l[section], sink) && 
+					   isassigned(switches.ConnectionInstance.cIn_l[section][sink], k) && 
+					   !isempty(switches.ConnectionInstance.cIn_l[section][sink][k]) &&
+					   sum(switches.ConnectionInstance.cIn_l[section][sink][k]) != 0.0
+						has_dynamic_inlet = true
+					elseif isassigned(switches.ConnectionInstance.cIn_q, section) && 
+						   isassigned(switches.ConnectionInstance.cIn_q[section], sink) && 
+						   isassigned(switches.ConnectionInstance.cIn_q[section][sink], k) && 
+						   !isempty(switches.ConnectionInstance.cIn_q[section][sink][k]) &&
+						   sum(switches.ConnectionInstance.cIn_q[section][sink][k]) != 0.0
+						has_dynamic_inlet = true
+					elseif isassigned(switches.ConnectionInstance.cIn_cube, section) && 
+						   isassigned(switches.ConnectionInstance.cIn_cube[section], sink) && 
+						   isassigned(switches.ConnectionInstance.cIn_cube[section][sink], k) && 
+						   !isempty(switches.ConnectionInstance.cIn_cube[section][sink][k]) &&
+						   sum(switches.ConnectionInstance.cIn_cube[section][sink][k]) != 0.0
+						has_dynamic_inlet = true
+					# Safe check for u_unit
+					elseif switches.switchSetup[section] <= length(switches.ConnectionInstance.u_unit) && 
+						   isassigned(switches.ConnectionInstance.u_unit, switches.switchSetup[section]) && 
+						   isassigned(switches.ConnectionInstance.u_unit[switches.switchSetup[section]], sink) && 
+						   !isempty(switches.ConnectionInstance.u_unit[switches.switchSetup[section]][sink]) && 
+						   sum(switches.ConnectionInstance.u_unit[switches.switchSetup[section]][sink]) > 0.0
+						has_dynamic_inlet = true
+					# Safe check for dynamic_flow
+					elseif switches.switchSetup[section] <= size(switches.ConnectionInstance.dynamic_flow, 1) && 
+						   sink <= size(switches.ConnectionInstance.dynamic_flow, 2) && 
+						   isassigned(switches.ConnectionInstance.dynamic_flow, switches.switchSetup[section], sink) && 
+						   typeof(switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink]) == YesDynamicFlow
+						has_dynamic_inlet = true
+					end
+					
+					# Set the inlet condition based on the checks
+					if has_dynamic_inlet
 						switches.inlet_conditions[section, sink, k] = DynamicInlets()
-					else 
+					else
 						switches.inlet_conditions[section, sink, k] = StaticInlets()
 					end
 				end
