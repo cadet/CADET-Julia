@@ -35,6 +35,9 @@ include(joinpath(rel_path,"src", "utils", "solver.jl"))
 include(joinpath(rel_path,"src", "utils", "solverDAE.jl"))
 include(joinpath(rel_path,"src", "isotherms", "Jacobians.jl"))
 include(joinpath(rel_path,"src", "DG", "conv_disp_operator_dg_jac.jl"))
-
-
+# 
+const root = @__DIR__
+include(joinpath(root, "src", "DG", "RadialDGElements.jl"))
+include(joinpath(root, "src", "DG", "RadialConvDispOperatorDG.jl"))
+include(joinpath(root, "src", "DG", "radial_model_base.jl"))
 
