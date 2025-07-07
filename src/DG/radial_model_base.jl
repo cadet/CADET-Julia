@@ -1,13 +1,14 @@
 
 # Defines a Model wrapping
 #   1) a Radial DG operator (convective/dispersive)
-#   2) a linear rate mass sink (–u/tau)
+#   2) a linear rate mass sink (-kf * u )
 # and provides f!(du,u,model,t) to plug straight into ODEProblem.
 # -------------------------------------------------------------------
 # the Model: operator + initial condition
 # -------------------------------------------------------------------
 # so that Main.RadialConvDispOperatorDG is guaranteed to exist
 using .RadialConvDispOperatorDG: RadialConvDispOperator, radial_convdisp_op!
+using RadialDGElements: lglnodes
 mutable struct Model{T}
     op::RadialConvDispOperator{T}
     u0::Vector{T}
@@ -38,11 +39,15 @@ function Model(N::Integer, Ne::Integer,
 
     # generate cell-centers for initial condition
     deltarho = (rhomax - rhomin)/Ne
-    # cell‐centered nodes: midpoint of each element
-    rhoc = collect(rhomin .+ deltarho/2 .+ deltarho*(0:(Ne-1)))
+    xi, _ = lglnodes(N)  # Nodal points on reference element
 
-    # build u0
-    u0 = [u0_fn(rho) for rho in rhoc]
+    u0 = zeros(Float64, N, Ne)
+    for e in 1:Ne
+        r_left = rhomin + (e-1)*deltarho
+        r_nodes = ((xi .+ 1)*(deltarho/2)) .+ r_left
+        u0[:,e] = u0_fn.(r_nodes)
+    end
+    u0 = vec(u0)  # flatten for ODE
 
     Model{eltype(u0)}(op, u0, kf)
 end

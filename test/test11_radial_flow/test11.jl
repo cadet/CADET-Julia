@@ -6,29 +6,34 @@
 using Test
 include(joinpath(@__DIR__,"..","..","include.jl"))
 
-const N      =  3    # polynomial order: number of basis functions per element
-const Ne     = 20    # number of radial elements discretizing the domain
-const rhomin = 0.01  # inner radius of the annular domain
-const rhomax = 0.1   # outer radius of the annular domain
-const D_a    = 1e-5  # disperho_sion coefficient in radial coordinate
-const tau    = 1.0   # penalty parameter for DG interface flux stabilization
-const t_end  = 10.0   # final time for the simulation
-vel_fn(r)   = 1.0    # velocity profile (constant radial velocity)
-u0_fn(r)    = 0.0    # initial concentration profile as a function of r
+N, Ne = 3, 20
+rhomin, rhomax = 0.01, 0.1
+D_a, tau = 1e-5, 1.0
+t_end = 10.0
+vel_fn(r) = 1.0
+u0_fn(r) = 1.0   # <-- nonzero initial condition
+kf = 0.0
 
-@testset "Radial DG + LRM mass-conservation" begin
-  # parameter
-  m = Model(N, Ne, rhomin, rhomax, D_a, tau, vel_fn, t_end, u0_fn)
-  prob = ODEProblem((du,u,p,t)->f!(du,u,m,t), m.u0, (0.0, t_end))
-  sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-6)
+m = Model(N, Ne, rhomin, rhomax, D_a, tau, vel_fn, kf, u0_fn)
+prob = ODEProblem((du,u,p,t)->f!(du,u,m,t), m.u0, (0.0, t_end))
+sol = solve(prob, Tsit5(), reltol=1e-8, abstol=1e-8)
 
-  # To account for cylindrical symmetry, total mass is integrated with weight r:
-  #   mass ≈ ∫_{rmin}^{rmax} u(r) * r dr
-  # We approximate this integral using midpoint rule over Ne elements:
-  deltarho = (rhomax - rhomin)/Ne
-  rho_s = rhomin .+ ((collect(1:Ne) .- 0.5) .* deltarho)
-  mass0 = sum(u0_fn.(rho_s) .* rho_s) * deltarho
-  mass1 = sum(sol.u[end] .* rho_s) * deltarho
+xi, w = lglnodes(N)
+deltarho = (rhomax - rhomin)/Ne
 
-  @test isapprox(mass1, mass0, atol=1e-6)
+function dg_mass(u, N, Ne, rhomin, deltarho, w)
+    mass = 0.0; offset = 0
+    for e in 1:Ne
+        r_left = rhomin + (e-1)*deltarho
+        r_nodes = ((xi .+ 1)*(deltarho/2)) .+ r_left
+        u_nodes = u[offset+1 : offset+N]
+        mass += sum(u_nodes .* r_nodes .* w) * (deltarho/2)
+        offset += N
+    end
+    return mass
 end
+
+mass0 = dg_mass(m.u0, N, Ne, rhomin, deltarho, w)
+mass1 = dg_mass(sol.u[end], N, Ne, rhomin, deltarho, w)
+
+@test isapprox(mass1, mass0, rtol=1e-8)
