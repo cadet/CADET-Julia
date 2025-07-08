@@ -48,7 +48,7 @@ function run_tests()
     end)
 
     push!(test_results, @testset "Test 11: Radial Flow" begin
-        include(joinpath(@__DIR__, "test11_radial_flow", "test11.jl"))
+        include(joinpath(@__DIR__, "test11_radial_flow", "test11a.jl"))
     end)
 
     # # Print the more detailed summary of test results
