@@ -4,14 +4,14 @@ using LinearAlgebra
 
 """
 Compute the Legendre polynomial P_n(x) of degree n at point x.
-
-The Legendre polynomials are defined by the three-term recurrence:
-  P₀(x) = 1,
-  P₁(x) = x,
-  (k+1) P_{k+1}(x) = (2k+1) x P_k(x) - k P_{k-1}(x),
-for k ≥ 1. They satisfy orthogonality on [-1,1]:
-  ∫_{-1}^1 P_m(x) P_n(x) dx = 2/(2n+1) δ_{mn}.
 """
+#The Legendre polynomials are defined by the three-term recurrence:
+#  P₀(x) = 1,
+#  P₁(x) = x,
+#  (k+1) P_{k+1}(x) = (2k+1) x P_k(x) - k P_{k-1}(x),
+#for k ≥ 1. They satisfy orthogonality on [-1,1]:
+#  ∫_{-1}^1 P_m(x) P_n(x) dx = 2/(2n+1) δ_{mn}.
+
 function legendreP(n::Integer, x::Real)
     # recurrence: P₀(x)=1, P₁(x)=x
     if n == 0
@@ -30,8 +30,8 @@ function legendreP(n::Integer, x::Real)
     end
 end
 
-#
-# Gauss–Legendre quadrature finds nodes x_i and weights w_i such that
+
+# Gauss-Legendre quadrature finds nodes x_i and weights w_i such that
 # ∫_{-1}^1 f(x) dx ≈ Σ_{i=1}^N w_i f(x_i),
 # with exactness for polynomials up to degree 2N-1.
 # We compute nodes as eigenvalues of the symmetric tridiagonal Jacobi matrix
@@ -50,9 +50,9 @@ function gauss_legendre(N::Integer)
     return x, w
 end
 
-#
-# Legendre–Gauss–Lobatto (LGL) quadrature includes endpoints ±1.
-# Nodes are the roots of (1 − x²) P'_{N-1}(x), given by cosines,
+
+# Legendre-Gauss-Lobatto (LGL) quadrature includes endpoints ±1.
+# Nodes are the roots of (1 - x²) P'_{N-1}(x), given by cosines,
 # and weights w_i = 2/(N(N-1)[P_{N-1}(x_i)]²), exact for polynomials ≤ 2N-3.
 """
 Legendre-Gauss-Lobatto (LGL) nodes and weights on [-1,1] for N points.
@@ -65,7 +65,7 @@ function lglnodes(N::Integer)
     return x, w
 end
 
-#
+
 # Construct the Vandermonde matrix V where V_{i,j} = P_{j-1}(x_i)
 # maps modal coefficients (in Legendre basis) to nodal values at x_i.
 """
@@ -76,10 +76,8 @@ function Vandermonde1D(N::Integer, x::AbstractVector{<:Real})
     return V
 end
 
-#
-# Inverse Vandermonde matrix to recover modal coefficients from nodal values.
 """
-Inverse Vandermonde matrix.
+Inverse Vandermonde matrix to recover modal coefficients from nodal values.
 """
 function invVandermonde1D(x::AbstractVector{<:Real})
     N = length(x)
@@ -87,7 +85,7 @@ function invVandermonde1D(x::AbstractVector{<:Real})
     return inv(V)
 end
 
-#
+
 # Differentiation matrix D approximates d/dx at nodes x_i:
 # D_{i,j} = P'_{N-1}(x_i) / [P'_{N-1}(x_j) (x_i − x_j)] for i ≠ j,
 # with diagonal entries chosen so each row sums to zero.
@@ -107,19 +105,20 @@ function Dmatrix1D(N::Integer, x::AbstractVector{<:Real})
     return D
 end
 
-#
+
 # Mass matrix for 1D DG is diagonal with quadrature weights w_i:
-# M_{ii} = ∫_{-1}^1 ℓ_i(x) ℓ_i(x) dx ≈ w_i, where ℓ_i are Lagrange basis.
+# M_{ii} = ∫_{-1}^1 ell_i(x) ell_i(x) dx ≈ w_i, where ell_i_i are Lagrange basis.
 """
 Mass matrix (diagonal) from quadrature weights.
+“Note: For radial problems, the mass matrix should be further weighted by the physical coordinate (r) when integrating in the physical domain.”
 """
 function MassMatrix1D(w::AbstractVector{<:Real})
     return Diagonal(w)
 end
 
-#
+
 # Face extraction operator picks left (i=1) and right (i=N) nodal values:
-# E_{:,k} = ℓ at boundary k.
+# E_{:,k} = ell at boundary k.
 """
 Face extraction operator (left, right) as a Nx2 matrix.
 """
@@ -129,7 +128,7 @@ function ExtractE1D(N::Integer)
     return hcat(eL, eR)
 end
 
-#
+
 # Lift matrix L = M^{-1} E spreads boundary flux contributions into volume
 # ensuring the DG formulation conserves mass and enforces flux through faces.
 """
