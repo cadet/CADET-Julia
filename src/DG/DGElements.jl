@@ -1,6 +1,6 @@
 #Functions used for DG Elements from Jan
 module DGElements
-using SpecialFunctions,LinearAlgebra
+using SpecialFunctions, LinearAlgebra
 
 
 #Basic stuff
