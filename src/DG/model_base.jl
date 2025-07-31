@@ -1,9 +1,3 @@
-
-
-
-
-
-
 mutable struct ConvDispOp
 	# A struct containing the DG variables for the convection dispersion operator which is the same for LRM, LRMP and GRM. 
 	# The variables are determined based on polyDeg (in mobile phase), nCells and colLength.  

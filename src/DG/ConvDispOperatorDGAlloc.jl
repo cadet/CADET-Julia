@@ -12,8 +12,6 @@ module ConvDispOperatorDGAlloc
     struct exact_integration <: ExactInt end
     struct collocation <: ExactInt end
 
-    
-    
     #residual function as implemented in CADET Core - Convection Dispersion operator
     @inline function residualImpl(y, idx, _strideNode,_strideCell,_nPoints,_nNodes, _nCells,_deltaZ, _polyDeg, _invWeights, _polyDerM,_invMM, u, d_ax, cIn,_exactInt) #Convection Dispersion operator
         #convDisp is the convection dispersion term as output
@@ -196,7 +194,5 @@ module ConvDispOperatorDGAlloc
             (_invWeights[end]) * ((state[idx[1] + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)]) - (_surfaceFlux[Cell+1]))
         end
         return stateDer
-    end
-    
-
+    end  
 end

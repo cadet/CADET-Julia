@@ -1,11 +1,6 @@
-
-
-
-
-
-
 # Solve the differential equations using the ODE solver
-function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg=QNDF(autodiff=false))
+function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg = QNDF(autodiff=AutoFiniteDiff()), # QNDF(autodiff=false) is deprecated, see ADTypes.jl
+)
 	
 	# Set up parameter tuple
 	jacProto = nothing
@@ -103,9 +98,7 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 			end
 		end
 
-		# Write to HDF5 using a function if relevant 
-		
-		
+		# Write to HDF5 using a function if relevant 	
 	end
     return nothing
 end
@@ -119,7 +112,7 @@ function problem!(RHS, x, p, t)
 	@inbounds for h = 1:nColumns 
 		compute!(RHS, RHS_q, cpp, qq, x, columns[h], t, i, h, switches, idx_units) 
 	end
-	nothing
+	return nothing
 end
 
 # Compute column model RHS
@@ -137,8 +130,7 @@ function compute!(RHS, RHS_q, cpp, qq, x, m :: ModelBase, t, section, sink, swit
 	# Compute transport term
 	compute_transport!(RHS, RHS_q, cpp, x, m, t, section, sink, switches, idx_units)
     
-	
-    nothing
+    return nothing
 end
 
 

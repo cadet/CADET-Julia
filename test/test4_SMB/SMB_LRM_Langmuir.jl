@@ -1,14 +1,7 @@
 
-using Test
-
-# Add the include file custom to load packages and scripts. 
-# the file is located on the main from which the file takes care of the rest. 
-include(joinpath(@__DIR__,"..", "..", "include.jl"))
-
-
+using Test, CADET, CSV, DataFrames
 
 # Define the dictionary representing the model structure
-
 function SMB_model(Q2,Q4,QF,QD,QE,QR,ts)
     nComp = 2
     model = OrderedDict(
@@ -19,7 +12,6 @@ function SMB_model(Q2,Q4,QF,QD,QE,QR,ts)
         )
     )
 
-
     # Set elements sequentially for unit_000
     model["root"]["input"]["model"]["unit_000"] = OrderedDict()
     model["root"]["input"]["model"]["unit_000"]["unit_type"] = "INLET"
@@ -28,7 +20,6 @@ function SMB_model(Q2,Q4,QF,QD,QE,QR,ts)
 
     model["root"]["input"]["model"]["unit_000"]["sec_000"] = OrderedDict()
     model["root"]["input"]["model"]["unit_000"]["sec_000"]["const_coeff"] = [10,10]
-
 
     model["root"]["input"]["model"]["unit_001"] = OrderedDict()
     model["root"]["input"]["model"]["unit_001"]["unit_type"] = "INLET"
@@ -73,7 +64,6 @@ function SMB_model(Q2,Q4,QF,QD,QE,QR,ts)
     model["root"]["input"]["model"]["unit_004"]["discretization"]["exact_integration"] = 1
     model["root"]["input"]["model"]["unit_004"]["discretization"]["nbound"] = ones(Bool, nComp)
 
-    
     # Copy to remaining units
     model["root"]["input"]["model"]["unit_005"] = deepcopy(model["root"]["input"]["model"]["unit_004"])
     model["root"]["input"]["model"]["unit_006"] = deepcopy(model["root"]["input"]["model"]["unit_004"])
@@ -96,7 +86,6 @@ function SMB_model(Q2,Q4,QF,QD,QE,QR,ts)
 
     model["root"]["input"]["solver"]["sections"]["section_times"] = section_times
     model["root"]["input"]["solver"]["sections"]["section_continuity"] = [0]
-
 
     # Set elements for connections
     model["root"]["input"]["model"]["connections"] = OrderedDict()
@@ -153,7 +142,6 @@ function SMB_model(Q2,Q4,QF,QD,QE,QR,ts)
         5,	2,	-1,	-1,	QE
     ]
 
-
     # Set elements for user_solution_times
     model["root"]["input"]["solver"]["user_solution_times"] = LinRange(0, n_cycles*4*ts, n_cycles*4*ts*10+1)
 
@@ -173,7 +161,6 @@ CfB = 10                             #mol/m3
 ka = [0.1, 0.05]
 kd = [1.0,1.0]
 qmax = [10.0,10.0]
-
 
 m1 = 1.2*ka[1]*qmax[1]
 m2 = 1.2*ka[2]*qmax[2]
@@ -197,10 +184,8 @@ QR = -ColLength*(m3*eps - m4*eps - m3 + m4)/ts
 # Generate dictionary 
 model = SMB_model(Q2,Q4,QF,QD,QE,QR,ts)
 
-
 # Create units for CADET-Julia 
 inlets, outlets, columns, switches, solverOptions = create_units(model)
-
 
 # Solve model 
 solve_model(
@@ -208,13 +193,11 @@ solve_model(
 			switches = switches,
 			solverOptions = solverOptions, 
 			outlets = outlets, # Defaults to (0,) as output is also written to units 
-			alg = QNDF(autodiff=false), # Defaults to alg = QNDF(autodiff=false)
+			alg = QNDF(autodiff=AutoFiniteDiff()), # QNDF(autodiff=false) is deprecated, see ADTypes.jl
 			)
 
 # Compare to analytical solution 
-using CSV,DataFrames 
 c_analytical = CSV.read((joinpath(@__DIR__,"SMB_LRM_Langmuir_semi_analytical.csv")),DataFrame)
-
 
 err = [0.0]
 for i =1:columns[1].nComp 

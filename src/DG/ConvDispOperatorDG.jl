@@ -9,10 +9,6 @@ module ConvDispOperatorDG
     struct exact_integration <: ExactInt end
     struct collocation <: ExactInt end
 
-
-
-    
-    
     #residual function as implemented in CADET Core - Convection Dispersion operator
     @inline function residualImpl!(Dh, y, idx, _strideNode,_strideCell,_nPoints,_nNodes, _nCells,_deltaZ, _polyDeg, _invWeights, _polyDerM,_invMM, u, d_ax, cIn,c_star,h_star,Dc,_h,mul1,_exactInt) #Convection Dispersion operator
         #convDisp is the convection dispersion term as output
@@ -27,7 +23,6 @@ module ConvDispOperatorDG
         fill!(Dc,0.0)  #These are neccesary to restart
         fill!(Dh,0.0)
         # fill!(_h,0.0)
-    
     
         #Solving auziliary system
         # Dc = volumeIntegral(y, Dc,_nCells,_nNodes,_polyDerM)
@@ -46,7 +41,6 @@ module ConvDispOperatorDG
         @inbounds for i in 1:_nPoints
             _h[i] = 2.0 / _deltaZ * u * y[idx[1] + i - 1] + d_ax * (2.0 / _deltaZ) * (2.0 / _deltaZ) * Dc[i] #0 allocations
         end
-
     
         # Dh = volumeIntegral(_h, Dh,_nCells,_nNodes,_polyDerM)                                                    # DG volume integral in strong form using h,  _h = D * (_h) = 2/dz * D (-uc + Dax*2/dz*(Dc-M^-1*(c-c*))) i.e. first term of 3.50a
         volumeIntegral!(_h, Dh,_nCells,_nNodes,_polyDerM,mul1)
@@ -58,7 +52,6 @@ module ConvDispOperatorDG
         surfaceIntegral!(Dh,_h, 1, _nNodes, _strideNode, _strideCell, h_star, _nCells, _nNodes, _invMM, _polyDeg,_invWeights,_exactInt)
         # RHS = 2/dz * D (-uc + Dax*2/dz*(Dc-M^-1*(c-c*))) + 2/dz * M^-1*(-u*c + g)  - 2/dz* (v*c^- + (g^+ + g^-)/2)
         # RHS = 2/dz *(-D*(uc-g)  + M^-1 (-uc+g) - h*)
-    
     
         # return Dh
         nothing
@@ -119,7 +112,6 @@ module ConvDispOperatorDG
         nothing
     end
     
-    
     @inline function interfaceFluxAuxiliary!(_surfaceFlux::Vector{Float64}, C,idx, _strideNode::Int64, _strideCell::Int64,_nCells::Int64)
         # Auxiliary flux: c* = 0.5 (c_l + c_r) for g - Determines the interfaces (because of lifting matrix, B) between the cells - hence the length is nCells +1
         
@@ -127,8 +119,7 @@ module ConvDispOperatorDG
         # calculate inner interface fluxes
         @inbounds for Cell in 2:_nCells
             _surfaceFlux[Cell] = 0.5 * ((C[idx[1] + (Cell-1) * _strideCell - _strideNode]) + (C[idx[1] + (Cell-1) * _strideCell]))
-        end
-    
+        end    
         # calculate boundary interface fluxes
         _surfaceFlux[1] = 0.5 * ((C[idx[1] ]) + (C[idx[1] ]))  # left boundary interface
         _surfaceFlux[_nCells+1] = 0.5 * ((C[idx[1] + _nCells * _strideCell - _strideNode]) + (C[idx[1] + _nCells * _strideCell - _strideNode]))  # right boundary interface
@@ -148,7 +139,6 @@ module ConvDispOperatorDG
         end
         nothing
     end
-
 
     # calculates the string form surface Integral using collocation
     @inline function surfaceIntegral!(stateDer,state, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt::collocation)
@@ -179,7 +169,6 @@ module ConvDispOperatorDG
         nothing
     end
 
-
     # calculates the string form surface Integral using collocation
     @inline function surfaceIntegraly!(stateDer,state,idx, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt::collocation)
         #This function takes stateDer and subtracts M^-1 * (C-C*) at the interfaces. Because B is a sparse matrix, it takes input and subtract M^-1 B [state - state*]        
@@ -190,10 +179,7 @@ module ConvDispOperatorDG
             #Last cell node
             stateDer[1 + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)] +=
             (_invWeights[end]) * ((state[idx[1] + ( (Cell-1) * strideCell_stateDer) + ( _polyDeg * strideNode_stateDer)]) - (_surfaceFlux[Cell+1]))
-        end
-        
+        end        
         nothing
     end
-    
-
 end
