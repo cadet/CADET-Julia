@@ -25,21 +25,20 @@ For more details about the CADET-project, including the original CADET-Core, we 
 Getting started
 ---------------
 
-Clone this repository: `git clone https://github.com/jespfra/CADET-Julia.git`
-
-Install Julia, preferably as an extension to your IDE such as visual studio code.
-
-Open a Julia REPL at the project directory and run the following commands:
-
+Install Julia.
+Open a Julia REPL at the desired project directory and run the following commands:
 ```julia
 using Pkg
-Pkg.instantiate()
+Pkg.add("https://github.com/jespfra/CADET-Julia")
 ```
+You can then use `CADET-Julia` by including 
+```
+using CADETJulia
+... your simulation code here...
+```
+in a .jl file. Please refer to the test folder for examples on how simulation code can look 
+like.
 
-You can compile and execute any of the simulations defined in the test folder.
-
-To set up and run your own simulations, please refer to the test folder.
- 
 License
 -------
 
