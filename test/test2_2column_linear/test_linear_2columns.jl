@@ -1,4 +1,4 @@
-using Test, CADET, Plots, HDF5
+using Test, CADETJulia, Plots, HDF5
 
 # Define the OrderedDictionary representing the model structure
 nComp = 1
@@ -82,7 +82,7 @@ solve_model(
 			switches = switches,
 			solverOptions = solverOptions, 
 			outlets = outlets, # Defaults to (0,) as output is also written to units 
-			alg = QNDF(autodiff=AutoFiniteDiff()), # QNDF(autodiff=false) is deprecated, see ADTypes.jl
+			alg = QNDF(autodiff=AutoFiniteDiff()),
 			)
 
 plot(columns[1].solution_outlet[:,1])

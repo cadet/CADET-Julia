@@ -1,4 +1,4 @@
-using Test, CADET, CSV, DataFrames
+using Test, CADETJulia, CSV, DataFrames
 
 # Define the dictionary representing the model structure
 nComp = 1

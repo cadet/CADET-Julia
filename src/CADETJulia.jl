@@ -3,25 +3,23 @@ module CADETJulia
 
 # A file that includes the relevant scripts, refers to the correct functions and loads basic packages for ODE solving
 
+#Packages in General registry
+using Reexport
+@reexport using SciMLBase #to include SciML common interface
+@reexport using ADTypes #to include AutoFiniteDiff() etc.
+@reexport using OrdinaryDiffEqBDF #only include default ODE solver (QNDNF) in package 
+using SparseArrays # To use sparse matrices 
+@reexport using DataStructures # To get OrderedDict
+using HDF5 # To read HDF5 files
+using SpecialFunctions #for gamma function
+using LinearAlgebra #for mul!
+@reexport using Sundials #to include default DAE solver (IDA) in package
+
 # Local modules
 include("DG/DGElements.jl")
 using .DGElements
 include("DG/ConvDispOperatorDG.jl")
 using .ConvDispOperatorDG
-
-#Packages in General registry
-# using OrdinaryDiffEq
-using Reexport
-@reexport using DifferentialEquations
-using SparseArrays # To use sparse matrices 
-@reexport using DataStructures # To get OrderedDict
-using HDF5 # To read HDF5 files
-using SpecialFunctions
-using LinearAlgebra
-using Sundials
-using Plots
-#using BenchmarkTools
-using IncompleteLU
 
 # Include the Julia functions
 include("isotherms/binding_base.jl")
@@ -38,6 +36,6 @@ include("utils/solverDAE.jl")
 include("isotherms/Jacobians.jl")
 include("DG/conv_disp_operator_dg_jac.jl")
 
-export OrderedDict, solve_model, create_units
+export OrderedDict, solve_model, solve_model_dae, create_units
 
 end

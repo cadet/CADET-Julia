@@ -46,8 +46,6 @@ function jac_finite_diff_dae(F, p, x0, epsilon=1e-8)
 	return jacProto
 end
 
-
-
 # Compute the static jacobian and determine allocation matrices determining the Jacobian 
 function jac_static(model, u, p) #
 	
@@ -63,7 +61,6 @@ function jac_static(model, u, p) #
     
     return (dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac)
 end
-
 
 # # Compute the static jacobian and determine allocation matrices determining the Jacobian 
 # function jac_static(model::LRMP)
@@ -106,8 +103,6 @@ end
 #     return (dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac)
 # end
 
-
-
 function analytical_jac!(J, x, p, t)
     model = p[1]
 
@@ -131,14 +126,12 @@ function analytical_jac!(J, x, p, t)
     nothing
 end
 
-
 function analytical_jac_dae!(J, RHS, x, p, gamma, t)
 
 	model = p[1]
 
     # Compute dynamic part of Jacobian from isotherm
     compute_jac_iso!(J,x,model[1],model[1].bind,p,t) # refers to the specific jacobian for binding
-
 
     dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac = p[end]
 
@@ -162,8 +155,6 @@ function analytical_jac_dae!(J, RHS, x, p, gamma, t)
 	
     nothing
 end
-
-
 
 # A function that computes the Jacobian by assembling the static and dynamic Jacobian
 # function computeJacAss!(J,model,p)

@@ -1,5 +1,5 @@
 
-using Test, CADET, CSV, DataFrames 
+using Test, CADETJulia, CSV, DataFrames 
 
 # Define the dictionary representing the model structure
 nComp = 1
@@ -97,7 +97,7 @@ solve_model(
 			switches = switches,
 			solverOptions = solverOptions, 
 			outlets = outlets, # Defaults to (0,) as output is also written to units 
-			alg = QNDF(autodiff=AutoFiniteDiff()), # QNDF(autodiff=false) is deprecated, see ADTypes.jl
+			alg = QNDF(autodiff=AutoFiniteDiff()),
 			)
 
 # Compare to semi-analytical solution 
