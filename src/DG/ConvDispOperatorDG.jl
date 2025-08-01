@@ -1,7 +1,8 @@
 #Functions from Jan 
 
 module ConvDispOperatorDG
-    using SpecialFunctions,LinearAlgebra
+    #using #SpecialFunctions
+    using LinearAlgebra
 
     abstract type ExactInt end
     # A struct to indicate whether exact integration or collocation is used

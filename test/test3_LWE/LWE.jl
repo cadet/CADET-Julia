@@ -1,5 +1,5 @@
 
-using Test, CADET, CSV, DataFrames 
+using Test, CADETJulia, CSV, DataFrames 
 
 # Define the dictionary representing the model structure
 nComp = 4
@@ -78,6 +78,7 @@ model["root"]["input"]["model"]["connections"]["switch_000"] = OrderedDict()
 model["root"]["input"]["model"]["connections"]["switch_000"]["section"] = 0
 model["root"]["input"]["model"]["connections"]["switch_000"]["connections"] = [0, 1, -1, -1, 2/60, 
                                                                                1, 2, -1, -1, 2/60]
+
 # Set elements for user_solution_times
 model["root"]["input"]["solver"]["user_solution_times"] = LinRange(0, 1500, 1500+1)
 
@@ -94,15 +95,9 @@ solve_model(
 			switches = switches,
 			solverOptions = solverOptions, 
 			outlets = outlets, # Defaults to (0,) as output is also written to units 
-			alg = QNDF(autodiff=AutoFiniteDiff()), # QNDF(autodiff=false) is deprecated, see ADTypes.jl
 			)
 
 # Compare to analytical solution 
 c_analytical = CSV.read((joinpath(@__DIR__,"LWE.csv")),DataFrame)
-
-err = [0.0]
-for i = 1:nComp
-    err[1] = maximum([err[1], maximum(abs.(columns[1].solution_outlet[:,i]-c_analytical[:,"C$(i-1)"]))])
-end
-
-@test err[1] < 1e-3
+err = maximum(maximum(abs.(columns[1].solution_outlet[:,i]-c_analytical[:,"C$(i-1)"])) for i in 1:nComp)
+@test err < 1e-3

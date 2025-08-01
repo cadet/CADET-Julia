@@ -1,7 +1,6 @@
 # Solve the differential equations using the ODE solver
-function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg = QNDF(autodiff=AutoFiniteDiff()), # QNDF(autodiff=false) is deprecated, see ADTypes.jl
+function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg = QNDF(autodiff=AutoFiniteDiff()),
 )
-	
 	# Set up parameter tuple
 	jacProto = nothing
 	p_jac = nothing
@@ -37,8 +36,7 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 
 		# If Analytical Jacobian == yes, set analytical Jacobian
 		# Is only supported for batch operation! 
-		if solverOptions.analyticalJacobian == true
-		
+		if solverOptions.analyticalJacobian == true		
 			# determine static jacobian and allocation matrices that are stored in p_jac
 			p_jac = jac_static(columns[1], switches.ConnectionInstance.u_tot[switches.switchSetup[i], 1], p) 
 			p = (columns, columns[1].RHS_q, columns[1].cpp, columns[1].qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, p_jac)

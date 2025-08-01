@@ -1,2 +1,2 @@
-using Aqua, CADET
-Aqua.test_all(CADET)
+using Aqua, CADETJulia
+Aqua.test_all(CADETJulia)

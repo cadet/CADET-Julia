@@ -2,9 +2,6 @@
 module DGElements
 using SpecialFunctions, LinearAlgebra
 
-
-#Basic stuff
-
 #LGL nodes and weights
 function lglnodes(N)
     # Truncation + 1

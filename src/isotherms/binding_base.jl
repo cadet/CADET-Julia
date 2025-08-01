@@ -1,10 +1,5 @@
-# Import necessary Julia packages
-
-
-
 abstract type bindingBase 
 	# Here the binding is specified
-
 end
 
 ########################### LINEAR ISOTHERM ###########################
@@ -52,7 +47,6 @@ function compute_binding!(RHS_q, cpp, qq, bind::Linear, nComp, bindStride, t)
 
 	nothing
 end
-
 
 # compute jacobian of isotherm
 function compute_jac_iso!(J,x,model,bind::Linear,p,t)
