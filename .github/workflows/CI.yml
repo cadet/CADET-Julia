@@ -33,4 +33,4 @@ jobs:
 
       - name: Run tests
         run: |
-          julia --project -e 'using Pkg; Pkg.activate("."); include("test/runtests.jl")'
+          julia --project -e 'using Pkg; Pkg.test()'
