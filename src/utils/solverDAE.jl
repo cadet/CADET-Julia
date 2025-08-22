@@ -6,7 +6,6 @@
 
 # Solve the differential equations using the ODE solver
 function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(0,), alg=IDA(init_all=false))
-
 	# To have outlets as a tuple
 	if typeof(columns)<:ModelBase
 		columns = (columns,)
@@ -17,7 +16,6 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 		outlets = (outlets,)
 	end
 
-	
 	x0 = solverOptions.x0
 	differential_vars = ones(Int64,length(x0))
 	dx0 = zeros(Float64,length(x0))
@@ -51,8 +49,8 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 		if solverOptions.prototypeJacobian == true
 			
 			# determine jacobian prototype
-			jacProto = sparse(zeros(length(x0),length(x0)))
-			analytical_jac(jacProto, solverOptions.x0 .+ 1e-6, solverOptions.x0 .+ 1e-6, p, 1e-7, 0.0)
+			jacProto = sparse(jac_finite_diff_dae(problemDAE!,p,solverOptions.x0 .+ 1e-6, 1e-8))
+			#analytical_jac(jacProto, solverOptions.x0 .+ 1e-6, solverOptions.x0 .+ 1e-6, p, 1e-7, 0.0) #XXX: seems wrong; replaced by line above (adapted from solver.jl)
 			
 			# set dq0dq to zero when computing SMA w. formulation 1 as dq/dt is not needed to be computed
 			# This makes it slightly faster
@@ -114,7 +112,6 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
     return nothing
 end
 
-
 # Define the function representing the differential equations for transport and binding
 function problemDAE!(out, RHS, x, p, t)
     columns, RHS_q, cpp, qq, i, nColumns, idx_units, switches = p
@@ -164,6 +161,3 @@ function initialize_dae!(dx0, x0, p)
 	end
 	nothing
 end
-
-
-
