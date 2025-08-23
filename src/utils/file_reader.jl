@@ -217,14 +217,14 @@ function create_units(model::Union{Dict, OrderedDict})
 			source = units[sourceID]
 			sink = units[sinkID]
 
-			# Setting velocity 
 			if typeof(sink)<:ModelBase # if sink is column 
-				# if both cross sectional area is given, infer via volumetric flowrate
-				if haskey(model["root"]["input"]["model"][sinkID],"cross_section_area")
-					u = connectionMatrix[j, 5]/(model["root"]["input"]["model"][sinkID]["cross_section_area"]*sink.eps_c) 
-				else
-					u = model["root"]["input"]["model"][sinkID]["velocity"]
-				end
+                # Setting velocity 
+                # if both cross sectional area is given, infer via volumetric flowrate
+                if haskey(model["root"]["input"]["model"][sinkID],"cross_section_area")
+                    u = connectionMatrix[j, 5]/(model["root"]["input"]["model"][sinkID]["cross_section_area"]*sink.eps_c) 
+                else
+                    u = model["root"]["input"]["model"][sinkID]["velocity"]
+                end
 
 				# As sink is a column, the column number is needed 
 				idx = findfirst(x -> x == sinkID, columnIDs)
@@ -253,14 +253,12 @@ function create_units(model::Union{Dict, OrderedDict})
 			# if sink is createOutlet, the source must be from a column 
 			# Hence we need the right column
 			if typeof(sink) == CreateOutlet
+                u = connectionMatrix[j,5]
+                
 				# if sink is createOutlet, the source must be from a column 
 				# Hence we need the right column 
 				idx = findfirst(x -> x == sourceID, columnIDs)
 				source = columnNumber[idx]
-				# if outlet is specified as sink, the velocity does not matter. 
-				# hence an arbitrary value is assigned 
-
-				u = 0.1 # value not used anyway if outlets are sinks 
 			end
 
 			# if dynamic flow is activated and matrix is specified 

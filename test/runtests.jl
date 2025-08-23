@@ -31,3 +31,4 @@ end
 @safetestset "Test 8: CSTR" begin include("test8_cstr/test8.jl") end
 @safetestset "Test 9: CSTR Col CSTR" begin include("test9_cstr_col_cstr/test9.jl") end
 @safetestset "Test 10: polyflow" begin include("test10_polyflow/test10.jl") end
+@safetestset "Test 11: multi-inlet/outlet" begin include("test11_multi_inlet_outlet/test11.jl") end

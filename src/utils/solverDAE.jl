@@ -93,14 +93,19 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
 		# Write outlets - if specified 
 		if outlets != (0,) 
 			for j in eachindex(outlets)
-				if outlets[j].idx_outlet != [-1]
-					for k = 1:columns[1].nComp
-						if typeof(columns[outlets[j].idx_unit[switches.switchSetup[i]]]) == cstr
-							outlets[j].solution_outlet[length(outlets[j].solution_times) + 1 : length(outlets[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k + outlets[j].idx_outlet[switches.switchSetup[i]]).u
-						else
-							outlets[j].solution_outlet[length(outlets[j].solution_times) + 1 : length(outlets[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k*columns[outlets[j].idx_unit[switches.switchSetup[i]]].ConvDispOpInstance.nPoints + outlets[j].idx_outlet[switches.switchSetup[i]]).u
-						end
-					end 
+				if outlets[j].idx_outlet != [[-1]]
+					for k in eachindex(outlets[j].idx_outlet[1])
+						for l = 1:columns[1].nComp
+							if typeof(columns[outlets[j].idx_unit[switches.switchSetup[i]][k]]) == cstr
+								outlets[j].solution_outlet[length(outlets[j].solution_times) + 1 : length(outlets[j].solution_times) + length(sol.t[2:end]), l] += sol(sol.t[2:end], idxs=l + outlets[j].idx_outlet[switches.switchSetup[i]][k]).u .* outlets[j].u_outlet[switches.switchSetup[i]][k]
+							else
+								outlets[j].solution_outlet[length(outlets[j].solution_times) + 1 : length(outlets[j].solution_times) + length(sol.t[2:end]), l] += sol(sol.t[2:end], idxs=l*columns[outlets[j].idx_unit[switches.switchSetup[i]][k]].ConvDispOpInstance.nPoints + outlets[j].idx_outlet[switches.switchSetup[i]][k]).u .* outlets[j].u_outlet[switches.switchSetup[i]][k]
+							end
+						end 
+					end
+					# Divide outlet with total velocity to account for contribution for potential multiple sources for the outlet
+					outlets[j].solution_outlet[length(outlets[j].solution_times) + 1 : length(outlets[j].solution_times) + length(sol.t[2:end]), :] ./= outlets[j].u_tot[switches.switchSetup[i]]
+
 					append!(outlets[j].solution_times,sol.t[2:end] .+ tspan[1])
 				end
 			end
