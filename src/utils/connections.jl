@@ -92,15 +92,19 @@ mutable struct CreateOutlet
 	# An outlet is specified as a container that holds specific outputs
 	solution_outlet::Matrix{Float64}
 	solution_times::Vector{Float64}
-	idx_unit::Vector{Int64}
-	idx_outlet::Vector{Int64}
+	idx_unit::Vector{Vector{Int64}}
+	idx_outlet::Vector{Vector{Int64}}
+	u_outlet::Vector{Vector{Float64}} # velocities from connections
+	u_tot::Vector{Float64} # total velocities from connections
 
 	function CreateOutlet(;nComp::Int64)
 		solution_outlet = zeros(Float64,0,nComp)
 		solution_times = Float64[]
-		idx_unit = [-1]
-		idx_outlet = [-1]
-		new(solution_outlet, solution_times, idx_unit, idx_outlet)
+		idx_unit = [[-1]]
+		idx_outlet = [[-1]]
+		u_outlet = [[-1.]]
+		u_tot = zeros(Float64,1)
+		new(solution_outlet, solution_times, idx_unit, idx_outlet, u_outlet, u_tot)
 	end 
 end 
 
@@ -298,13 +302,23 @@ mutable struct Connection
 		switches.switchSetup[section] = switch
 
 		# if first time using this function, create outlet indicies
-		if sink.idx_unit == [-1] 
-			sink.idx_unit = zeros(Int64, switches.nSwitches)
-			sink.idx_outlet = zeros(Int64, switches.nSwitches)
+		if sink.idx_unit == [[-1]]
+
+			# idx_unit and idx_outlet will have connections for each switch
+			# Multiple units can connect to each outlet
+			sink.idx_unit = [ Int[] for _ in 1:switches.nSwitches ]
+			sink.idx_outlet = [ Int[] for _ in 1:switches.nSwitches ]
+
+			sink.u_outlet = [ Int[] for _ in 1:switches.nSwitches ]
+			sink.u_tot = zeros(Float64, switches.nSwitches)
 		end
-		
+
+		# Modify the inlet velocities
+		push!(sink.u_outlet[switch], u)
+		sink.u_tot[switch] += u
+
 		# It should determine the right indicies from which the output from the source should be written to. 
-		sink.idx_unit[switch] = source
+		push!(sink.idx_unit[switch], source)
 	end
 	
 end
