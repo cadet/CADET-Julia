@@ -1,8 +1,4 @@
-using Test
-
-# Add the include file custom to load packages and scripts. 
-# the file is located on the main from which the file takes care of the rest. 
-include(joinpath(@__DIR__,"..", "..", "include.jl"))
+using Test, CADETJulia, CSV, DataFrames
 
 
 
@@ -21,8 +17,7 @@ solve_model(
 			alg = QNDF(autodiff=false), # Defaults to alg = QNDF(autodiff=false)
 			)
 
-using Plots
-plot(columns[1].solution_outlet[:,1])
+# plot(columns[1].solution_outlet[:,1])
 
 # Compare to analytical solution 
 using CSV,DataFrames 
