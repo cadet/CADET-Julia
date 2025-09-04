@@ -1,5 +1,6 @@
 [![DOI](https://zenodo.org/badge/690988707.svg)](https://doi.org/10.5281/zenodo.14068012)
 ![CI](https://github.com/cadet/cadet-julia/actions/workflows/CI.yml/badge.svg)
+[![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
 
 CADET-Julia
 ===========
