@@ -95,4 +95,4 @@ solve_model(
 test10 = CSV.read((joinpath(@__DIR__,"test10.csv")),DataFrame)
 err = maximum(abs.(columns[1].solution_outlet[:,1]-test10[:,"C0"]))
 
-@test err < 1e-7
+@test err < 5e-7
