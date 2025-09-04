@@ -1,5 +1,5 @@
 
-using Test, CADETJulia, CSV, DataFrames, Plots
+using Test, CADETJulia, CSV, DataFrames
 
 # Define the dictionary representing the model structure
 nComp = 1
@@ -83,7 +83,7 @@ solve_model_dae(
 			outlets = outlets, # Defaults to (0,) as output is also written to units 
 			)
 
-plot(columns[1].solution_outlet[:,1])
+#plot(columns[1].solution_outlet[:,1])
 
 # Compare to analytical solution 
 c_analytical = CSV.read((joinpath(@__DIR__,"Analytical_LRM_Linear.csv")),DataFrame)

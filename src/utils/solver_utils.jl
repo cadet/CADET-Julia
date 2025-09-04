@@ -65,12 +65,14 @@ mutable struct SolverCache
 				continue
 			else 
 				for j in eachindex(outlets)
-					for k in eachindex(outlets[j].idx_unit)
-						if outlets[j].idx_unit[k] == i # if connection between column and outlet 
-							outlets[j].idx_outlet[k] = idx_units[i] # set the right index 
-						end 
+					for k in eachindex(outlets[j].idx_unit) # For each switch
+						for l in eachindex(outlets[j].idx_unit[k]) # For each connection to the outlet
+							if outlets[j].idx_unit[k][l] == i # if connection between column and outlet
+								push!(outlets[j].idx_outlet[k], idx_units[i]) # set the right index
+							end
+						end
 					end
-					outlets[j].solution_outlet = -ones(Float64,length(solution_times),columns[i].nComp)
+					outlets[j].solution_outlet = -zeros(Float64,length(solution_times),columns[i].nComp)
 				end
 			end
 		end
@@ -128,17 +130,20 @@ mutable struct SolverCache
 			append!(columns[i].solution_times, 0)
 		end
 
-		# Fill in initial conditions in outlets 
+		# Fill in initial conditions in outlets with the first connection to the outlet
 		if outlets != (0,)
 			for i in eachindex(outlets)
-				if outlets[i].idx_outlet != [-1]
-					for j=1:columns[1].nComp # Storing initial conditions in output matrix
-						if typeof(columns[outlets[i].idx_unit[switches.switchSetup[i]]]) == cstr
-							outlets[i].solution_outlet[1,j] = x0[j + idx_units[i]]
-						else
-							outlets[i].solution_outlet[1,j] = x0[j*columns[outlets[i].idx_unit[switches.switchSetup[1]]].ConvDispOpInstance.nPoints + outlets[i].idx_outlet[switches.switchSetup[i]]]
+				if outlets[i].idx_outlet != [[-1]]
+					for j in eachindex(outlets[i].idx_outlet[1]) # at first switch = at initial conditions
+						for k=1:columns[1].nComp # Storing initial conditions in output matrix
+							if typeof(columns[outlets[i].idx_unit[switches.switchSetup[i]][1]]) == cstr
+								outlets[i].solution_outlet[1,k] += x0[k + idx_units[i]] * outlets[i].u_outlet[1][j]
+							else
+								outlets[i].solution_outlet[1,k] += x0[k*columns[outlets[i].idx_unit[switches.switchSetup[1]][1]].ConvDispOpInstance.nPoints + outlets[i].idx_outlet[switches.switchSetup[i]][1]]  * outlets[i].u_outlet[1][j]
+							end
 						end
 					end
+					outlets[i].solution_outlet[1,:] ./= outlets[i].u_tot[1]
 					append!(outlets[i].solution_times, 0)
 				end
 			end

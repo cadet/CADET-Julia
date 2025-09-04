@@ -1,4 +1,4 @@
-using Test, CADETJulia, Plots, HDF5
+using Test, CADETJulia, HDF5
 
 # Define the OrderedDictionary representing the model structure
 nComp = 1
@@ -85,8 +85,8 @@ solve_model(
 			alg = QNDF(autodiff=AutoFiniteDiff()),
 			)
 
-plot(columns[1].solution_outlet[:,1])
-plot!(columns[2].solution_outlet[:,1])
+# plot(columns[1].solution_outlet[:,1])
+# plot!(columns[2].solution_outlet[:,1])
 
 # Compare to analytical solution 
 filename = joinpath(@__DIR__,"model1.h5")
