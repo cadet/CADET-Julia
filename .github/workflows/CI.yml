@@ -1,36 +1,36 @@
-name: CI
+name: Run tests
 
 on:
   push:
     branches:
       - main
   pull_request:
-  workflow_dispatch:
+
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        version: ['1.10']
-        os: ['ubuntu-latest']
+        julia-version: ['lts', '1']
+        julia-arch: [x64]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        exclude:
+          - os: macOS-latest
+            julia-arch: x86
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Set up Julia
-        uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
         with:
-          version: ${{ matrix.version }}
-
-      - name: Install dependencies
-        run: |
-          julia --project -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate()'
-
-      - name: List installed packages
-        run: |
-          julia --project -e 'using Pkg; Pkg.status()'
-
-      - name: Run tests
-        run: |
-          julia --project -e 'using Pkg; Pkg.test()'
+          version: ${{ matrix.julia-version }}
+          arch: ${{ matrix.julia-arch }}
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          annotate: true
