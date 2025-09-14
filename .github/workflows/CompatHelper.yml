@@ -6,6 +6,9 @@ on:
   issues:
     types: [opened, reopened]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
