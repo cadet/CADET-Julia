@@ -1,5 +1,24 @@
 
+"""
+    initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
 
+Generates and returns the initial condition vectors for the mobile phase, pore phase, and stationary phase concentrations in a chromatographic column model.
+
+# Arguments
+- `nComp`: Number of components.
+- `ConvDispOpInstance`: Object containing discretization information (must have `nPoints` field).
+- `bindStride`: Stride for the stationary/pore phase.
+- `c0`: Initial mobile phase concentration(s). Can be a scalar, vector of length `nComp`, or full vector of length `nComp * nPoints`.
+- `cp0`: Initial pore phase concentration(s). Can be -1 (copy from `c0`), 0 (all zeros), vector of length `nComp`, or full vector of length `nComp * bindStride`.
+- `q0`: Initial stationary phase concentration(s). Can be 0 (all zeros), vector of length `nComp`, or full vector of length `nComp * bindStride`.
+
+# Returns
+A tuple `(c0, cp0, q0)` where each is a vector of the correct length for the simulation.
+
+# Details
+- Handles flexible input: scalars, short vectors, or full-length vectors for each phase.
+- Throws an error if the input sizes are inconsistent.
+"""
 function initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
 	# This function returns the initial conditions
 	# Takes c0, cp0 and q0 and returns the initial condition vectors. 

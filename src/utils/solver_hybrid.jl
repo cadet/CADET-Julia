@@ -1,10 +1,26 @@
+"""
+    solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg=QNDF(autodiff=AutoFiniteDiff()), ...)
+
+Solves the system of differential equations for the specified chromatographic model using the provided ODE solver algorithm.
+For this solve_model, a hybrid model is assumed where a neural network is used for part of the model.
+
+# Arguments
+- `columns`: Tuple or array of column unit objects (and CSTRs) to be simulated.
+- `switches::Switches`: Switches object containing section times and connection information.
+- `solverOptions`: SolverCache object with initial conditions, tolerances, and solver settings.
+- `outlets`: Tuple of outlet unit objects (optional).
+- `alg`: ODE solver algorithm to use (defaults to QNDF with finite difference).
 
 
+# Details
+- Iterates over all section times, updating solutions and solving the ODE system for each section.
+- Handles both static and analytical Jacobians, as well as prototype Jacobians for efficiency.
+- Updates solution matrices for columns and outlets after each section.
+- Supports dynamic inlets and multiple unit types.
 
-
-
-
-# Solve the differential equations using the ODE solver
+# Returns
+Nothing. Results are stored in the `solution_outlet` and `solution_times` fields of the column and outlet objects.
+"""
 function solve_model_hybrid(; columns, switches::Switches, solverOptions, hybrid_model_setup, p_NN, outlets=(0,), alg=QNDF(autodiff=false), sensealg = nothing)
 	"""
 	Solves a hybrid model for all sections and stores the solution. 
@@ -118,13 +134,37 @@ function solve_model_hybrid(; columns, switches::Switches, solverOptions, hybrid
 end
 
 
-# Define a function to compute the transport term for the LRM
+"""
+    compute_transport(RHS, RHS_q, x, m::LRM, t, section, sink, switches, idx_units)
+
+Computes the transport term for the Lumped Rate Model (LRM) in a hybrid model, including convection, dispersion, and isotherm contributions.
+Everything is in an allocating form to accommodate training of the NNs.
+This needs to be updated...
+For more info, checkout:
+Frandsen, J., Santana, V. V., Jul‐Rasmussen, P., Nogueira, I. B. R., Huusom, J. K., Gernaey, K. V., & Abildskov, J. (2025). 
+A systematic screening of neural network‐based hybrid models of adsorption in chromatography processes. 
+Aiche Journal. https://doi.org/10.1002/aic.70045
+
+# Arguments
+- `RHS`: Vector to store the computed derivatives for the mobile phase.
+- `RHS_q`: Vector to store the computed derivatives for the stationary phase.
+- `x`: State vector containing current concentrations.
+- `m::LRM`: The LRM unit instance.
+- `t`: Current simulation time.
+- `section`: Current section index.
+- `sink`: Index of the current unit.
+- `switches`: Switches object containing flow and connection information.
+- `idx_units`: Vector of starting indices for each unit in the global state vector.
+
+# Details
+- Loops over all components, computing the convection-dispersion term and subtracting the isotherm term.
+- Determines the correct indices for mobile and stationary phases.
+- Calculates inlet concentrations based on the current section and unit.
+
+# Returns
+Nothing. Modifies `RHS` and `RHS_q` in place.
+"""
 function compute_transport(RHS, RHS_q, x, m::LRM, t, section, sink, switches, idx_units) 
-	"""
-	Transport for the LRM. 
-	Allocating form. 
-	
-	"""
 
 	# section = i from call 
 	# sink is the unit i.e., h from previous call

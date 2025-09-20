@@ -1,3 +1,16 @@
+"""
+    ConvDispOp
+
+A struct containing the Discontinuous Galerkin (DG) variables for the convection-dispersion operator, used in LRM, LRMP, and GRM models.
+
+# Fields
+- `polyDeg`, `nCells`, `nNodes`, `nPoints`, `strideNode`, `strideCell`: Discretization parameters.
+- `nodes`, `invWeights`, `invMM`, `polyDerM`, `deltaZ`: DG node and matrix data.
+- `mul1`, `c_star`, `h_star`, `Dc`, `Dh`, `h`: Allocation vectors for intermediate calculations.
+
+# Constructor
+- `ConvDispOp(polyDeg, nCells, colLength)`
+"""
 mutable struct ConvDispOp
 	# A struct containing the DG variables for the convection dispersion operator which is the same for LRM, LRMP and GRM. 
 	# The variables are determined based on polyDeg (in mobile phase), nCells and colLength.  
@@ -52,7 +65,18 @@ mutable struct ConvDispOp
 end
 
 
-# Pore phase 
+"""
+    PoreOp
+
+A struct containing the DG variables for the pore phase operator, used in LRMP and GRM models.
+
+# Fields
+- `stridePore`, `LiftMatrixRed`, `invMM_Ar`, `nNodesPore` are DG stuff for the pore phase.
+- `term1`, `boundaryPore`: are for allocations.
+
+# Constructor
+- `PoreOp(polyDegPore, nPoints, nComp, Rc, Rp, deltaR, eps_p)`
+"""
 mutable struct PoreOp
 	# A struct containing the DG variables for the convection dispersion operator which is the same for LRM, LRMP and GRM. 
 	# The variables are determined based on polyDeg (in mobile phase), nCells and colLength.  
@@ -111,41 +135,45 @@ mutable struct PoreOp
 	end
 end
 
+"""
+    InletConditions
+
+Abstract type for specifying inlet condition types (static or dynamic) for a unit.
+"""
 abstract type InletConditions end
-# A function to determine the interstitial velocities. 
 # If only the inlet velocity has been specified, it does nothing 
 # If dynamic flow rates has been activated, it determines the flow rates based on the time and the values of the coefficients. 
 
 struct DynamicInlets <: InletConditions end
 struct StaticInlets <: InletConditions end
 
-function inlet_concentrations!(cIn, switches, j, section, sink, x, t, inlet_type::StaticInlets)
-    """ 
-        There are static inlets, the function does not and the inlet concentration is given as cIn.
-    """
+"""
+    inlet_concentrations!(cIn, switches, j, section, sink, x, t, inlet_type::InletConditions)
 
+Computes the static/dynamic inlet concentration for a given component and section, based on time-dependent coefficients and connections.
+
+# Arguments
+- `cIn`: Inlet concentration vector (modified in place).
+- `switches`: Switches object.
+- `j`: Component index.
+- `section`: Section index.
+- `sink`: Unit index.
+- `x`: State vector.
+- `t`: Current time.
+- `inlet_type`: Should be `DynamicInlets`.
+
+# Details for dynamic inlets
+- Sums contributions from inlets and connected units.
+- Divides by total velocity to ensure mass balance.
+
+# Details for static inlets
+- Leaves `cIn` unchanged.
+"""
+function inlet_concentrations!(cIn, switches, j, section, sink, x, t, inlet_type::StaticInlets)
     nothing 
 end
 
-# A function that determines the inlet concentrations needed for the transport equations 
-# Depends on the inlets specified in the switches
 function inlet_concentrations!(cIn, switches, j, section, sink, x, t, inlet_type::DynamicInlets)
-	"""
-		A function that determines the inlet concentrations needed for the transport equations. 
-		Depends on the inlets specified in the switches. 
-		input is: 
-		cIn: the inlet concentration
-		switches: the switches struct
-		j: the component index
-		section: the section index
-		sink: the sink (unit)
-		x: the state vector
-		t: the time
-
-		output is a modification of:
-		cIn: the inlet concentration
-		
-	"""
 	# Restarting the inlet concentration
 	cIn[j] = 0.0
     
@@ -171,11 +199,31 @@ end
 
 
 ################################# TRANSPORT MODELS #################################
+"""
+    ModelBase
+
+Abstract type for all transport model types (e.g., LRM, LRMP, GRM).
+"""
 abstract type ModelBase 
-	# From here, the transport models are found
 end
 
 ################################# LUMPED RATE MODEL (LRM) #################################
+"""
+    LRM <: ModelBase
+
+Lumped Rate Model (LRM) struct for a chromatographic column.
+
+# Fields
+- `nComp`, `colLength`, `cross_section_area`, `d_ax`, `eps_c`, `Fc`: Physical and geometric parameters.
+- `c0`, `cp0`, `q0`: Initial condition vectors.
+- `cIn`, `bind`: Inlet concentration vector and binding model.
+- `exactInt`, `polyDeg`, `nCells`, `ConvDispOpInstance`, `Fjac`, `idx`: DG stuff.
+- `bindStride`, `adsStride`, `unitStride`: Strides and indexing parameters.
+- `cpp`, `RHS_q`, `qq`, `RHS`, `solution_outlet`, `solution_times`: State and allocation variables.
+
+# Constructor
+- `LRM(; nComp, colLength, d_ax, eps_c, c0, cp0, q0, polyDeg, nCells, exact_integration, cross_section_area)`
+"""
 mutable struct LRM <: ModelBase
 	# Check parameters
 	# These parameters are the minimum to be specified for the LRM
@@ -275,7 +323,27 @@ mutable struct LRM <: ModelBase
 end
 
 
-# Define a function to compute the transport term for the LRM
+"""
+    compute_transport!(RHS, RHS_q, cpp, x, m::ModelBase, t, section, sink, switches, idx_units)
+
+Computes the transport term for the LRM/LRMP/GRM.
+
+# Arguments
+- `RHS`: Vector to store the computed derivatives.
+- `RHS_q`: View into `RHS` for stationary phase variables.
+- `cpp`: View into `x` for pore phase variables.
+- `x`: State vector.
+- `m::ModelBase`: The model instance.
+- `t`: Current simulation time.
+- `section`: Current section index.
+- `sink`: Index of the current unit.
+- `switches`: Switches object.
+- `idx_units`: Vector of starting indices for each unit in the global state vector.
+
+# Details
+- Updates inlet concentrations and computes the convection-dispersion term for each component.
+- Stores the change in concentration in `RHS`.
+"""
 function compute_transport!(RHS, RHS_q, cpp, x, m::LRM, t, section, sink, switches, idx_units) 
 	# section = i from call 
 	# sink is the unit i.e., h from previous call
@@ -307,6 +375,22 @@ end
 
 
 ################################# LUMPED RATE MODEL WITH PORES (LRMP) #################################
+"""
+    LRMP <: ModelBase
+
+Lumped Rate Model with Pores (LRMP) struct for a chromatographic column.
+
+# Fields
+- `nComp`, `colLength`, `cross_section_area`, `d_ax`, `Fc`, `Fp`, `Fjac`, `eps_c`, `eps_p`, `kf`, `Rp`: Physical and geometric parameters.
+- `c0`, `cp0`, `q0`: Initial condition vectors.
+- `cIn`, `bind`: Inlet concentration vector and binding model.
+- `exactInt`, `polyDeg`, `nCells`, `ConvDispOpInstance`: DG stuff.
+- `bindStride`, `adsStride`, `unitStride`, `idx`, `idx_p`: Stride and indexing parameters.
+- `cpp`, `RHS_q`, `qq`, `RHS`, `solution_outlet`, `solution_times`: State and allocation variables.
+
+# Constructor
+- `LRMP(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, c0, cp0, q0, polyDeg, nCells, exact_integration, cross_section_area)`
+"""
 mutable struct LRMP <: ModelBase
 	# These parameters are the minimum to be specified for the LRMP
 	nComp::Int64 
@@ -451,7 +535,22 @@ end
 
 
 ################################# GENERAL RATE MODEL (GRM) #################################
+"""
+    GRM <: ModelBase
 
+General Rate Model (GRM) struct for a chromatographic column.
+
+# Fields
+- `nComp`, `colLength`, `cross_section_area`, `d_ax`, `eps_c`, `eps_p`, `Fc`, `Fp`, `Fjac`, `kf`, `Rp`, `Rc`, `Dp`: Physical and geometric parameters.
+- `c0`, `cp0`, `q0`: Initial condition vectors.
+- `cIn`, `bind`: Inlet concentration vector and binding model.
+- `exactInt`, `polyDeg`, `nCells`, `Jr`, `invRi`, `polyDegPore`, `ConvDispOpInstance`, `PoreOpInstance`: DG stuff.
+- `bindStride`, `adsStride`, `unitStride`, `idx`, `idx_p`, `idx_q`: Stride and indexing parameters.
+- `cpp`, `RHS_q`, `qq`, `solution_outlet`, `solution_times`: State and allocation variables.
+
+# Constructor
+- `GRM(; nComp, colLength, d_ax, eps_c, eps_p, kf, Rp, Dp, Rc, c0, cp0, q0, polyDeg, polyDegPore, nCells, exact_integration, cross_section_area)`
+"""
 mutable struct GRM <: ModelBase
 	# These parameters are the minimum to be specified for the LRMP
 	nComp::Int64 

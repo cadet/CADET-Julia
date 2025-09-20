@@ -9,7 +9,18 @@ mutable struct CreateInlet
 	cIn_q::Matrix{Float64}
 	cIn_cube::Matrix{Float64}
 	
-	# Default generate an inlet 
+	"""
+    	CreateInlet(; nComp::Int64, nSections::Int64)
+
+	Constructs an inlet unit for the simulation, storing inlet concentration coefficients for each section and component.
+
+	# Arguments
+	- `nComp`: Number of components.
+	- `nSections`: Number of section times.
+
+	# Fields
+	- `cIn_c`, `cIn_l`, `cIn_q`, `cIn_cube`: Matrices of inlet concentration coefficients (constant, linear, quadratic, cubic) for each section and component.
+	"""
 	function CreateInlet(; nComp::Int64, nSections::Int64)
 
 		# Instantiate the inlets 
@@ -29,7 +40,21 @@ mutable struct CreateInlet
 
 end
 
-# Modify inlet 
+"""
+    modify_inlet!(; inlet, nComp, section, cIn_c, cIn_l, cIn_q, cIn_cube)
+
+Modifies the inlet concentration coefficients for a given section of a `CreateInlet` object.
+
+# Arguments
+- `inlet`: The `CreateInlet` instance to modify.
+- `nComp`: Number of components.
+- `section`: Section index to modify.
+- `cIn_c`, `cIn_l`, `cIn_q`, `cIn_cube`: Vectors of new coefficients for the section (optional, default zeros).
+
+# Details
+- Updates the specified section with new coefficients.
+- Repeats the pattern for remaining sections if needed.
+""" 
 function modify_inlet!(; inlet::CreateInlet, nComp::Int64, section, cIn_c = [0.0], cIn_l=[0.0], cIn_q=[0.0], cIn_cube=[0.0])
 	if size(cIn_c)[1] == nComp
 		inlet.cIn_c[section,:] = cIn_c 
@@ -73,7 +98,18 @@ function modify_inlet!(; inlet::CreateInlet, nComp::Int64, section, cIn_c = [0.0
 	inlet.cIn_cube = repeat_elements(inlet.cIn_cube, section)
 end
 
-# a function to repeat the pattern of the remaining elements from an index idx
+"""
+    repeat_elements(matrix::Matrix, idx::Int)
+
+Repeats the pattern of the first `idx` rows of a matrix to fill the entire matrix.
+
+# Arguments
+- `matrix`: Input matrix.
+- `idx`: Number of rows to use as the repeating pattern.
+
+# Returns
+A matrix with the pattern repeated to match the original size.
+"""
 function repeat_elements(matrix::Matrix, idx::Int)
     nrows, ncols = size(matrix)
     pattern = view(matrix, 1:idx, :)
@@ -97,6 +133,20 @@ mutable struct CreateOutlet
 	u_outlet::Vector{Vector{Float64}} # velocities from connections
 	u_tot::Vector{Float64} # total velocities from connections
 
+	"""
+    	CreateOutlet(; nComp::Int64)
+
+	Constructs an outlet unit for the simulation, storing outlet solution data and connection indices.
+
+	# Arguments
+	- `nComp`: Number of components.
+
+	# Fields
+	- `solution_outlet`: Matrix to store outlet solutions.
+	- `solution_times`: Vector of time points for outlet solutions.
+	- `idx_unit`, `idx_outlet`: Indices of connected units and outlets.
+	- `u_outlet`, `u_tot`: Velocities for each switch and total velocities.
+	"""
 	function CreateOutlet(;nComp::Int64)
 		solution_outlet = zeros(Float64,0,nComp)
 		solution_times = Float64[]
@@ -108,6 +158,23 @@ mutable struct CreateOutlet
 	end 
 end 
 
+
+"""
+    Connection(...)
+
+Defines the connections between units (inlets, columns, CSTRs, outlets) in the simulation, including flow rates, concentration coefficients, and connection indices.
+
+# Constructors
+- For inlets, columns, CSTRs, and outlets as sources/sinks.
+- For default configuration (initializes empty connection matrices).
+
+# Fields
+- `u_unit`, `u_inlet`, `u_tot`: Velocities for each switch and unit.
+- `c_connect`, `idx_connect`: Connection matrices and indices.
+- `cIn_c`, `cIn_l`, `cIn_q`, `cIn_cube`: Inlet concentration coefficients.
+- `Q_inlet_*`, `Q_unit_*`: Flow rate coefficients.
+- `dynamic_flow`: Dynamic flow specification for each switch and unit.
+"""
 mutable struct Connection	
 
 	u_unit::Vector{Vector{Vector{Float64}}} # Inlet comming from another unit i.e. switch, unit(sink), value
@@ -338,7 +405,25 @@ mutable struct Switches
 	ConnectionInstance::Connection 
 	idx_units::Vector{Int64}
 	inlet_conditions::Array{InletConditions, 3}
-	
+
+	"""
+		Switches(; nSections, section_times, nSwitches, nColumns, nComp, idx_units)
+
+	Stores and manages the switching logic for inlet concentrations and connections in the simulation.
+
+	# Arguments
+	- `nSections`: Number of section times.
+	- `section_times`: Vector of section time points.
+	- `nSwitches`: Number of switches.
+	- `nColumns`: Number of columns/units.
+	- `nComp`: Number of components.
+	- `idx_units`: Indices for each unit in the global state vector.
+
+	# Fields
+	- `ConnectionInstance`: The `Connection` object managing all connections.
+	- `switchSetup`: Vector specifying the switch used at each section.
+	- `inlet_conditions`: Array of inlet condition types for each section, unit, and component.
+	"""	
 	function Switches(; nSections::Int64, section_times::Vector{Float64}, nSwitches::Int64, nColumns::Int64, nComp::Int64, idx_units::Vector{Int64})
 	
 		# Establish default zero configuration

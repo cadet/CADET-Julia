@@ -1,8 +1,29 @@
+"""
+    bindingBase
+
+Abstract type for binding (adsorption) models.
+"""
 abstract type bindingBase 
 	# Here the binding is specified
 end
 
 ########################### LINEAR ISOTHERM ###########################
+"""
+    Linear <: bindingBase
+
+Linear adsorption model for adsorption/desorption. Supports both kinetic and equilibrium (rapid) binding.
+
+# Fields
+- `ka`: Association (adsorption) rate constants for each component.
+- `kd`: Dissociation (desorption) rate constants for each component.
+- `is_kinetic`: If `true`, uses kinetic binding; if `false`, uses rapid equilibrium.
+- `kkin`: Kinetic rate constant(s) for each component.
+- `nBound`: Boolean vector indicating which components are bound.
+- `idx`: Index range for the bound components.
+
+# Constructor
+- `Linear(; ka, kd, is_kinetic, kkin=1.0, bindStride, nBound)`
+"""
 mutable struct Linear <: bindingBase
 	# Check parameters
 	ka::Vector{Float64}
@@ -35,7 +56,23 @@ mutable struct Linear <: bindingBase
 	end
 end
 
-# Computing the binding of the linear isotherm
+"""
+    compute_binding!(RHS_q, cpp, qq, bind::bindingBase, nComp, bindStride, t)
+
+Computes the time derivative of the bound phase for the isotherm.
+
+# Arguments
+- `RHS_q`: Output vector for the time derivative of the bound phase.
+- `cpp`: Mobile phase concentration vector.
+- `qq`: Bound phase concentration vector.
+- `bind`: Isotherm object.
+- `nComp`: Number of components.
+- `bindStride`: Stride for bound phase indexing.
+- `t`: Current time (not used for Linear).
+
+# Returns
+Nothing. Modifies `RHS_q` in place.
+"""
 function compute_binding!(RHS_q, cpp, qq, bind::Linear, nComp, bindStride, t)
 	fill!(RHS_q,0.0)
 
@@ -48,7 +85,22 @@ function compute_binding!(RHS_q, cpp, qq, bind::Linear, nComp, bindStride, t)
 	nothing
 end
 
-# compute jacobian of isotherm
+"""
+    compute_jac_iso!(J, x, model, bind::bindingBase, p, t)
+
+Computes the Jacobian of the isotherm equations for the isotherm.
+
+# Arguments
+- `J`: Jacobian matrix to be filled.
+- `x`: State vector.
+- `model`: Model object (provides number of components, etc.).
+- `bind`: Isotherm object.
+- `p`: Tuple of preallocated arrays for Jacobian blocks.
+- `t`: Current time.
+
+# Returns
+Nothing. Modifies `J` in place.
+"""
 function compute_jac_iso!(J,x,model,bind::Linear,p,t)
     dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac = p[end] # The allocations are stored in last element of p tuple
     
@@ -68,6 +120,25 @@ end
 
 
 ########################### Langmuir ISOTHERM ###########################
+"""
+    Langmuir <: bindingBase
+
+Langmuir isotherm model for adsorption/desorption. Supports both kinetic and equilibrium (rapid) binding.
+
+# Fields
+- `ka`: Association (adsorption) rate constants for each component.
+- `kd`: Dissociation (desorption) rate constants for each component.
+- `qmax`: Maximum binding capacity for each component.
+- `is_kinetic`: If `true`, uses kinetic binding; if `false`, uses rapid equilibrium.
+- `kkin`: Kinetic rate constant(s) for each component.
+- `L`: Allocation vector for intermediate calculations.
+- `qsum`: Allocation vector for intermediate calculations.
+- `nBound`: Boolean vector indicating which components are bound.
+- `idx`: Index range for the bound components.
+
+# Constructor
+- `Langmuir(; ka, kd, qmax, is_kinetic, kkin=1.0, bindStride, nBound)`
+"""
 mutable struct Langmuir <: bindingBase 
 	# Check parameters
 	ka::Vector{Float64}
@@ -180,6 +251,25 @@ end
 
 
 ########################### SMA ISOTHERM ###########################
+"""
+    SMA <: bindingBase
+
+Steric Mass Action (SMA) isotherm model for ion-exchange chromatography. Supports both kinetic and equilibrium (rapid) binding.
+
+# Fields
+- `ka`: Association (adsorption) rate constants for each component.
+- `kd`: Dissociation (desorption) rate constants for each component.
+- `ionicCapacity`: Total ionic capacity of the stationary phase.
+- `v`: Characteristic charge (valence) for each component.
+- `sigma`: Steric factor for each component.
+- `is_kinetic`: If `true`, uses kinetic binding; if `false`, uses rapid equilibrium.
+- `kkin`: Kinetic rate constant(s) for each component.
+- `nBound`: Boolean vector indicating which components are bound.
+- `idx`: Index range for the bound components.
+
+# Constructor
+- `SMA(; ka, kd, ionicCapacity, v, sigma, is_kinetic, kkin=1.0, bindStride, nBound)`
+"""
 mutable struct SMA <: bindingBase 
 	# Check parameters
 	ka::Vector{Float64}
@@ -423,7 +513,23 @@ end
 # end
 
 
+"""
+    Langmuir_LDF <: bindingBase
 
+Langmuir isotherm with Linear Driving Force (LDF) approximation. Models adsorption/desorption with a lumped mass transfer coefficient.
+
+# Fields
+- `Keq`: Equilibrium constant for each component.
+- `qmax`: Maximum binding capacity for each component.
+- `k_L`: Lumped mass transfer coefficient(s) for each component.
+- `q_eq`: Allocation vector for equilibrium bound phase.
+- `denom`: Allocation vector for denominator in equilibrium calculation.
+- `nBound`: Boolean vector indicating which components are bound.
+- `idx`: Index range for the bound components.
+
+# Constructor
+- `Langmuir_LDF(; Keq, qmax, k_L, bindStride, nBound)`
+"""
 mutable struct Langmuir_LDF <: bindingBase 
 	# Check parameters
 	Keq::Vector{Float64}

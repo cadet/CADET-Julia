@@ -1,11 +1,21 @@
-# module ConvDispOperatorDGJac
-# a bunch of functions to determine the convection-dispersion part of the Jacobian
-# using LinearAlgebra
-# using ConvDispOperatorDG
+"""
+    DGjacobianConvBlock!(convBlock, _nNodes, u, _polyDerM, _exactInt, _invMM, _invWeights, _deltaZ)
 
+Computes the convection block of the Jacobian matrix for a single cell in the DG discretization.
 
-    
-# calculates the convection part of the DG jacobian
+# Arguments
+- `convBlock`: Output matrix for the convection block.
+- `_nNodes`: Number of DG nodes per cell.
+- `u`: Local velocity or flow field.
+- `_polyDerM`: Polynomial derivative matrix.
+- `_exactInt`: Boolean for exact integration.
+- `_invMM`: Inverse mass matrix.
+- `_invWeights`: Inverse quadrature weights.
+- `_deltaZ`: Cell width.
+
+# Returns
+Nothing. Modifies `convBlock` in place.
+"""
 function DGjacobianConvBlock!(convBlock, _nNodes, u, _polyDerM, _exactInt, _invMM, _invWeights, _deltaZ)
     # Convection block [ d RHS_conv / d c ], additionally depends on upwind flux part from corresponding neighbour cell
     # fill!(convBlock, 0.0)
@@ -27,7 +37,25 @@ function DGjacobianConvBlock!(convBlock, _nNodes, u, _polyDerM, _exactInt, _invM
     nothing # *-1 for residual in Jans code
 end
 
-# calculates the DG Jacobian auxiliary block
+"""
+    getGBlock(cellIdx, _nNodes, _polyDerM, _nCells, _invMM, _deltaZ, _invWeights, _polyDeg, _exactInt)
+
+Constructs the G block (convection or dispersion) for a given cell in the DG discretization.
+
+# Arguments
+- `cellIdx`: Index of the cell.
+- `_nNodes`: Number of DG nodes per cell.
+- `_polyDerM`: Polynomial derivative matrix.
+- `_nCells`: Total number of cells.
+- `_invMM`: Inverse mass matrix.
+- `_deltaZ`: Cell width.
+- `_invWeights`: Inverse quadrature weights.
+- `_polyDeg`: Polynomial degree.
+- `_exactInt`: Boolean for exact integration.
+
+# Returns
+The G block matrix for the specified cell.
+"""
 function getGBlock(cellIdx,_nNodes,_polyDerM,_nCells,_invMM,_deltaZ,_invWeights,_polyDeg,_exactInt)
     # Auxiliary Block [ d g(c) / d c ], additionally depends on boundary entries of neighboring cells
     gBlock = zeros(_nNodes, _nNodes + 2)
@@ -81,11 +109,21 @@ function getGBlock(cellIdx,_nNodes,_polyDerM,_nCells,_invMM,_deltaZ,_invWeights,
 end
 
 
-# @brief calculates the num. flux part of a dispersion DG Jacobian block
-#  @param [in] cellIdx cell index
-#  @param [in] leftG left neighbour auxiliary block
-#  @param [in] middleG neighbour auxiliary block
-#  @param [in] rightG neighbour auxiliary block
+
+"""
+    auxBlockGstar(cellIdx, leftG, middleG, rightG, _nNodes, _nCells)
+
+Assembles the auxiliary G* block for the Jacobian, combining contributions from neighboring cells.
+
+# Arguments
+- `cellIdx`: Index of the cell.
+- `leftG`, `middleG`, `rightG`: G blocks for the left, center, and right cells.
+- `_nNodes`: Number of DG nodes per cell.
+- `_nCells`: Total number of cells.
+
+# Returns
+The assembled G* block matrix for the specified cell.
+"""
 function auxBlockGstar(cellIdx, leftG, middleG, rightG,_nNodes,_nCells)
     # auxiliary block [ d g^* / d c ], depends on the whole previous and subsequent cell plus the first entries of subsubsequent cells
     gStarDC = zeros(_nNodes, 3 * _nNodes + 2)
@@ -105,7 +143,17 @@ function auxBlockGstar(cellIdx, leftG, middleG, rightG,_nNodes,_nCells)
     return gStarDC
 end
 
-#Lifting matrix
+"""
+    getBMatrix(_nNodes)
+
+Returns the B matrix (boundary operator) for the DG discretization.
+
+# Arguments
+- `_nNodes`: Number of DG nodes per cell.
+
+# Returns
+The B matrix as a 2D array.
+"""
 function getBMatrix(_nNodes)
     B = zeros(_nNodes,_nNodes)
     B[1, 1] = -1.0
@@ -115,7 +163,25 @@ function getBMatrix(_nNodes)
 end
 
 
-#calculates the dispersion part of the DG jacobian
+"""
+    DGjacobianDispBlock(cellIdx, _exactInt, _nNodes, _polyDerM, _invMM, _deltaZ, _invWeights, _polyDeg, _nCells)
+
+Computes the dispersion block of the Jacobian matrix for a single cell in the DG discretization.
+
+# Arguments
+- `cellIdx`: Index of the cell.
+- `_exactInt`: Boolean for exact integration.
+- `_nNodes`: Number of DG nodes per cell.
+- `_polyDerM`: Polynomial derivative matrix.
+- `_invMM`: Inverse mass matrix.
+- `_deltaZ`: Cell width.
+- `_invWeights`: Inverse quadrature weights.
+- `_polyDeg`: Polynomial degree.
+- `_nCells`: Total number of cells.
+
+# Returns
+The dispersion block matrix for the specified cell.
+"""
 function DGjacobianDispBlock(cellIdx,_exactInt,_nNodes,_polyDerM,_invMM,_deltaZ,_invWeights,_polyDeg,_nCells)
     
     if typeof(_exactInt)== exact_integration
@@ -168,7 +234,23 @@ function DGjacobianDispBlock(cellIdx,_exactInt,_nNodes,_polyDerM,_invMM,_deltaZ,
 end
 
 
-# Convection part of the Jacobian is added
+"""
+    addLiquidJacBlock1!(jacobian, block, _nCells, _nNodes, u, _nComp, compstride)
+
+Adds a liquid-phase advective Jacobian block to the global Jacobian matrix for all components.
+
+# Arguments
+- `jacobian`: Global Jacobian matrix to be updated.
+- `block`: Local Jacobian block to add.
+- `_nCells`: Number of cells.
+- `_nNodes`: Number of DG nodes per cell.
+- `u`: Local velocity or flow field.
+- `_nComp`: Number of components.
+- `compstride`: Stride for component indexing.
+
+# Returns
+Nothing. Modifies `jacobian` in place.
+"""
 function addLiquidJacBlock1!(jacobian, block, _nCells,_nNodes,u,_nComp, compstride)
 
     #Boundary for forward flow
@@ -183,7 +265,27 @@ end
 
 
 
-#Assembles the analytical Jacobian for the inexact integration
+"""
+    calcConvDispCollocationDGSEMJacobian!(jacobian, _nCells, _strideCell, _strideNode, _nNodes, start, _DGjacAxDispBlocks, d_ax, _DGjacAxConvBlock, u, _nComp, compstride)
+
+Assembles the full Jacobian matrix for the convection-dispersion operator using the collocation DGSEM method.
+
+# Arguments
+- `jacobian`: Global Jacobian matrix to be filled.
+- `_nCells`: Number of cells.
+- `_strideCell`, `_strideNode`: Strides for cell and node indexing.
+- `_nNodes`: Number of DG nodes per cell.
+- `start`: Starting index for assembly.
+- `_DGjacAxDispBlocks`: Precomputed dispersion blocks.
+- `d_ax`: Axial dispersion coefficient.
+- `_DGjacAxConvBlock`: Precomputed convection blocks.
+- `u`: Local velocity or flow field.
+- `_nComp`: Number of components.
+- `compstride`: Stride for component indexing.
+
+# Returns
+Nothing. Modifies `jacobian` in place.
+"""
 function calcConvDispCollocationDGSEMJacobian!(jacobian, _nCells, _strideCell, _strideNode, _nNodes, start, _DGjacAxDispBlocks, d_ax, _DGjacAxConvBlock, u, _nComp, compstride)
     # # Compute Dispersion Jacobian Block
 
@@ -239,7 +341,27 @@ end
 
 
 
-#Assembles the analytical Jacobian for the exact integration 
+"""
+    calcConvDispDGSEMJacobian(jacobian, _nCells, _strideCell, _strideNode, _nNodes, start, _DGjacAxDispBlocks, d_ax, _DGjacAxConvBlock, u, _nComp, compstride)
+
+Assembles the full Jacobian matrix for the convection-dispersion operator using the DGSEM method.
+
+# Arguments
+- `jacobian`: Global Jacobian matrix to be filled.
+- `_nCells`: Number of cells.
+- `_strideCell`, `_strideNode`: Strides for cell and node indexing.
+- `_nNodes`: Number of DG nodes per cell.
+- `start`: Starting index for assembly.
+- `_DGjacAxDispBlocks`: Precomputed dispersion blocks.
+- `d_ax`: Axial dispersion coefficient.
+- `_DGjacAxConvBlock`: Precomputed convection blocks.
+- `u`: Local velocity or flow field.
+- `_nComp`: Number of components.
+- `compstride`: Stride for component indexing.
+
+# Returns
+Nothing. Modifies `jacobian` in place.
+"""
 function calcConvDispDGSEMJacobian(jacobian, _nCells, _strideCell, _strideNode, _nNodes, start, _DGjacAxDispBlocks, d_ax, _DGjacAxConvBlock, u, _nComp,compstride)
 
     #            Compute Dispersion Jacobian Block
@@ -321,7 +443,21 @@ function calcConvDispDGSEMJacobian(jacobian, _nCells, _strideCell, _strideNode, 
     nothing
 end
 
-# Static part of the Jacobian for LRM
+"""
+    ConvDispJacobian(model::LRM, u, p)
+    ConvDispJacobian(model::LRMP, u, p)
+    ConvDispJacobian(model::GRM, u, p)
+
+Computes the full convection-dispersion Jacobian matrix for the specified model type (LRM, LRMP, or GRM).
+
+# Arguments
+- `model`: Model object (LRM, LRMP, or GRM).
+- `u`: State vector or local velocity/flow field.
+- `p`: Parameters for the model.
+
+# Returns
+The full convection-dispersion Jacobian matrix as a 2D array.
+"""
 function ConvDispJacobian(model::LRM, u, p)
     ConvDispJac = zeros(model.nComp * model.bindStride + model.adsStride, model.nComp * model.bindStride + model.adsStride)
 
