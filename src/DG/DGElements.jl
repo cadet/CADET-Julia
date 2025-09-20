@@ -2,7 +2,17 @@
 module DGElements
 using SpecialFunctions, LinearAlgebra
 
-#LGL nodes and weights
+"""
+    lglnodes(N)
+
+Computes the Legendre-Gauss-Lobatto (LGL) nodes and weights for polynomial degree `N`.
+
+# Arguments
+- `N`: Polynomial degree.
+
+# Returns
+A tuple `(x, w)` where `x` are the LGL nodes and `w` are the corresponding weights.
+"""
 function lglnodes(N)
     # Truncation + 1
     N1 = N + 1
@@ -37,8 +47,19 @@ function lglnodes(N)
 end
 
 
-# computation of barycentric weights for fast polynomial evaluation
-# @param [in] baryWeights vector to store barycentric weights. Must already be initialized with ones!
+"""
+    barycentricWeights(baryWeights, _polyDeg, _nodes)
+
+Computes barycentric weights.
+
+# Arguments
+- `baryWeights`: Vector to store barycentric weights (should be initialized with ones).
+- `_polyDeg`: Polynomial degree.
+- `_nodes`: Vector of interpolation nodes.
+
+# Returns
+The vector of barycentric weights.
+"""
 function barycentricWeights(baryWeights,_polyDeg,_nodes)
     for j in 1:_polyDeg
         for k in 0:j-1
@@ -52,7 +73,18 @@ function barycentricWeights(baryWeights,_polyDeg,_nodes)
     return baryWeights
 end
 
-# @brief computation of nodal (lagrange) polynomial derivative matrix
+"""
+    derivativeMatrix(_polyDeg, _nodes)
+
+Computes the nodal (Lagrange) polynomial derivative matrix for a given set of nodes.
+
+# Arguments
+- `_polyDeg`: Polynomial degree.
+- `_nodes`: Vector of interpolation nodes.
+
+# Returns
+A matrix of derivatives of the Lagrange basis polynomials at the nodes.
+"""
 function derivativeMatrix(_polyDeg,_nodes)
     baryWeights = ones(_polyDeg + 1)
     baryWeights = barycentricWeights(baryWeights,_polyDeg,_nodes)
@@ -69,7 +101,18 @@ function derivativeMatrix(_polyDeg,_nodes)
 end
 
 
-#  factor to normalize legendre polynomials
+"""
+    orthonFactor(polyDeg, a=0.0, b=0.0)
+
+Computes the normalization factor for Jacobi or Legendre polynomials.
+
+# Arguments
+- `polyDeg`: Polynomial degree.
+- `a`, `b`: Jacobi polynomial parameters (default 0.0 for Legendre).
+
+# Returns
+The normalization factor as a Float64.
+"""
 function orthonFactor(polyDeg, a = 0.0, b = 0.0)
     # a = alpha, b = beta
     n = polyDeg
@@ -77,7 +120,19 @@ function orthonFactor(polyDeg, a = 0.0, b = 0.0)
     return sqrt(((2.0 * n + a + b + 1.0) * gamma(n + 1.0) * gamma(n + a + b + 1.0)) / (2.0^(a + b + 1.0) * gamma(n + a + 1.0) * gamma(n + b + 1.0)))
 end
 
-# calculates the Vandermonde matrix of the normalized jacobi polynomials
+"""
+    jacVandermondeMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Calculates the Vandermonde matrix of normalized Jacobi polynomials at the given nodes.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes.
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Jacobi polynomial parameters (optional).
+
+# Returns
+The Vandermonde matrix as a 2D array.
+"""
 function jacVandermondeMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     
     V = zeros(Float64, length(_nodes), length(_nodes))
@@ -104,7 +159,19 @@ function jacVandermondeMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return V
 end
 
-# calculates the Vandermonde matrix of the normalized legendre polynomials
+"""
+    getVandermonde_LEGENDRE(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Calculates the Vandermonde matrix of normalized Legendre polynomials at the given nodes.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes.
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Parameters (optional, default to Legendre).
+
+# Returns
+The Vandermonde matrix as a 2D array.
+"""
 function getVandermonde_LEGENDRE(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     
     V = zeros(Float64, length(_nodes), length(_nodes))
@@ -131,13 +198,37 @@ function getVandermonde_LEGENDRE(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return V
 end
 
-#Inverse mass matrix
+"""
+    invMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Computes the inverse mass matrix for the given nodes and polynomial degree.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes.
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Jacobi polynomial parameters (optional).
+
+# Returns
+The inverse mass matrix as a 2D array.
+"""
 function invMMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     _invMM = jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta) * transpose(jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta))
     return _invMM
 end
 
-# Mass matrix
+"""
+    MMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Computes the mass matrix for the given nodes and polynomial degree.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes.
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Jacobi polynomial parameters (optional).
+
+# Returns
+The mass matrix as a 2D array.
+"""
 function MMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return inv(invMMatrix(_nodes,_polyDeg, alpha, beta))
 end
@@ -149,7 +240,19 @@ end
 #     return _steifMatrix
 # end
 
-# Second order stiffness matrix
+"""
+    second_order_stiff_matrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Computes the second-order stiffness matrix for the given nodes and polynomial degree.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes.
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Jacobi polynomial parameters (optional).
+
+# Returns
+The second-order stiffness matrix as a 2D array.
+"""
 function second_order_stiff_matrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     #Mass matrix * Derivative matrix
     return Transpose(derivativeMatrix(_polyDeg,_nodes)) * MMatrix(_nodes,_polyDeg, alpha, beta) * derivativeMatrix(_polyDeg,_nodes)

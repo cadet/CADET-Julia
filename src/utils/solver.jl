@@ -1,4 +1,25 @@
-# Solve the differential equations using the ODE solver
+"""
+    solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg=QNDF(autodiff=AutoFiniteDiff()), ...)
+
+Solves the system of differential equations for the specified chromatographic model using the provided ODE solver algorithm.
+
+# Arguments
+- `columns`: Tuple or array of column unit objects (and CSTRs) to be simulated.
+- `switches::Switches`: Switches object containing section times and connection information.
+- `solverOptions`: SolverCache object with initial conditions, tolerances, and solver settings.
+- `outlets`: Tuple of outlet unit objects (optional).
+- `alg`: ODE solver algorithm to use (defaults to QNDF with finite difference).
+
+
+# Details
+- Iterates over all section times, updating solutions and solving the ODE system for each section.
+- Handles both static and analytical Jacobians, as well as prototype Jacobians for efficiency.
+- Updates solution matrices for columns and outlets after each section.
+- Supports dynamic inlets and multiple unit types.
+
+# Returns
+Nothing. Results are stored in the `solution_outlet` and `solution_times` fields of the column and outlet objects.
+"""
 function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg = QNDF(autodiff=AutoFiniteDiff()),
 )
 	# Set up parameter tuple
@@ -107,7 +128,24 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 end
 
 
-# Define the function representing the differential equations
+"""
+    problem!(RHS, x, p, t)
+
+Defines the system of differential equations, assembling the right-hand side (RHS) vector for the ODE solver.
+
+# Arguments
+- `RHS`: Vector to store the computed derivatives (right-hand side) for all state variables.
+- `x`: Current state vector.
+- `p`: Tuple of parameters, including columns, allocation vectors, section index, and switches.
+- `t`: Current simulation time.
+
+# Details
+- Loops over all units (columns) and calls `compute!` for each to fill the RHS vector.
+- Intended for use as the ODE function in the solver.
+
+# Returns
+Nothing. Modifies `RHS` in place.
+"""
 function problem!(RHS, x, p, t)
     columns, RHS_q, cpp, qq, i, nColumns, idx_units, switches = p
 	# i corresponds to section 
@@ -118,12 +156,36 @@ function problem!(RHS, x, p, t)
 	return nothing
 end
 
-# Compute column model RHS
+"""
+    compute!(RHS, RHS_q, cpp, qq, x, m::ModelBase, t, section, sink, switches, idx_units)
+
+Computes the right-hand side (RHS) contributions for a single unit, including binding and transport terms.
+
+# Arguments
+- `RHS`: Vector to store the computed derivatives for all state variables.
+- `RHS_q`: View into `RHS` for stationary phase variables.
+- `cpp`: View into `x` for pore phase variables.
+- `qq`: View into `x` for stationary phase variables.
+- `x`: Current state vector.
+- `m::ModelBase`: The unit instance.
+- `t`: Current simulation time.
+- `section`: Current section index.
+- `sink`: Index of the current unit.
+- `switches`: Switches object containing flow and connection information.
+- `idx_units`: Vector of starting indices for each unit in the global state vector.
+
+# Details
+- Computes binding term and transport term for the unit.
+- Modifies `RHS` in place.
+
+# Returns
+Nothing. Updates `RHS` in place.
+"""
 function compute!(RHS, RHS_q, cpp, qq, x, m :: ModelBase, t, section, sink, switches, idx_units) 
 	# section = i from call 
 	# sink is the unit i.e., h from previous call
 	
-	# Compute binding term. 
+	# Compute binding term if relevant. 
 	# The cpp, qq and rhs_q are set up to ease code reading
 	cpp = @view x[1 + m.adsStride + idx_units[sink] : m.adsStride + m.bindStride * m.nComp + idx_units[sink]]
 	qq = @view x[1 + m.adsStride + m.bindStride*m.nComp + idx_units[sink] : m.adsStride + m.bindStride * m.nComp * 2 + idx_units[sink]]

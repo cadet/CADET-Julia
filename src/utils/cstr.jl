@@ -19,15 +19,26 @@ mutable struct cstr
 	solution_times::Vector{Float64}
 	
 	
+	"""
+		cstr(; nComp, V, c0=0)
 
-	function cstr(; nComp, V, c0 = 0)
-		"""
-		A struct containing the parameters for the continuously stirred tank reactor 
-		Supports inlets from inlet and other units such as columns or cstr 
-		Support constant volumne cstr only 
-		The equation for that is 
+	Constructs a continuously stirred tank reactor (CSTR) unit for use in CADET-Julia simulations.
+
+	# Arguments
+	- `nComp`: Number of components in the reactor.
+	- `V`: Volume of the reactor.
+	- `c0`: (Optional) Initial concentration vector for each component. Defaults to zeros if not provided.
+
+	# Returns
+	A `cstr` struct containing all parameters and initial state for a constant-volume CSTR.
+
+	# Details
+	- Supports inlets from both external sources and other units (columns or CSTRs).
+	- Assumes constant reactor volume.
+	- The governing equation is: 
 		dc/dt = Q_tot/V (Q_col * c_col + Q_inlet * c_inlet - c) 
-		"""
+	"""
+	function cstr(; nComp, V, c0 = 0)
 		
 		# Set initial condition vector 
 		if c0 == 0
@@ -51,10 +62,28 @@ end
 
 
 
-# Define a function to compute the transport term for the cstr
+"""
+    compute!(RHS, RHS_q, cpp, qq, x, m::cstr, t, section, sink, switches, idx_units)
+
+Computes the right-hand side (RHS) of the ODE system for a continuously stirred tank reactor (CSTR) unit.
+
+# Arguments
+- `RHS`: Vector to store the computed derivatives (right-hand side) for concentrations.
+- `RHS_q`, `cpp`, `qq`: Additional arguments for compatibility (not used in CSTR).
+- `x`: State vector containing current concentrations.
+- `m::cstr`: The CSTR unit instance.
+- `t`: Current simulation time.
+- `section`: Current section index (for switching conditions).
+- `sink`: Index of the current unit (CSTR).
+- `switches`: Switches object containing flow and inlet condition information.
+- `idx_units`: Vector of starting indices for each unit in the global state vector.
+
+# Details
+- Updates the inlet flow and concentration for the CSTR based on current time and switching conditions.
+- Computes the time derivative of the concentration for each component according to the CSTR mass balance
+"""
+
 function compute!(RHS, RHS_q, cpp, qq, x, m::cstr, t, section, sink, switches, idx_units) 
-	# section = i from call 
-	# sink is the unit i.e., h from previous call
 	
 	# Determining inlet velocity if specified dynamically
 	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)

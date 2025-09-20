@@ -4,13 +4,39 @@ module ConvDispOperatorDG
     #using #SpecialFunctions
     using LinearAlgebra
 
+    """
+        ExactInt
+
+    Abstract type for specifying the integration method in the DG operator (exact integration or collocation).
+    """
     abstract type ExactInt end
     # A struct to indicate whether exact integration or collocation is used
 
     struct exact_integration <: ExactInt end
     struct collocation <: ExactInt end
 
-    #residual function as implemented in CADET Core - Convection Dispersion operator
+    """
+        residualImpl!(Dh, y, idx, _strideNode, _strideCell, _nPoints, _nNodes, _nCells, _deltaZ, _polyDeg, _invWeights, _polyDerM, _invMM, u, d_ax, cIn, c_star, h_star, Dc, _h, mul1, _exactInt)
+
+    Computes the residual for the convection-dispersion operator in the DG discretization as implemented in CADET-Core.
+    Source: Breuer, J. M., Leweke, S., Schmölder, J., Gassner, G., & von Lieres, E. (2023). Spatial discontinuous Galerkin spectral element method for a family of chromatography models in CADET. Computers and Chemical Engineering, 177, 108340. https://doi.org/10.1016/j.compchemeng.2023.108340
+
+    # Arguments
+    - `Dh`: Output vector for the residual.
+    - `y`: State vector.
+    - `idx`: Indexing information.
+    - `_strideNode`, `_strideCell`, `_nPoints`, `_nNodes`, `_nCells`: Discretization parameters.
+    - `_deltaZ`: Cell width.
+    - `_polyDeg`: Polynomial degree.
+    - `_invWeights`, `_polyDerM`, `_invMM`: DG matrices.
+    - `u`: Local velocity or flow field.
+    - `d_ax`: Axial dispersion coefficient.
+    - `cIn`, `c_star`, `h_star`, `Dc`, `_h`, `mul1`: Allocation and intermediate vectors.
+    - `_exactInt`: Integration method (`exact_integration` or `collocation`).
+
+    # Returns
+    Nothing. Modifies `Dh` in place.
+    """
     @inline function residualImpl!(Dh, y, idx, _strideNode,_strideCell,_nPoints,_nNodes, _nCells,_deltaZ, _polyDeg, _invWeights, _polyDerM,_invMM, u, d_ax, cIn,c_star,h_star,Dc,_h,mul1,_exactInt) #Convection Dispersion operator
         #convDisp is the convection dispersion term as output
         #t is the time
@@ -58,7 +84,22 @@ module ConvDispOperatorDG
         nothing
     end
 	
-	# calculates the volume Integral of the auxiliary equation
+	"""
+        volumeIntegral!(state, idx, stateDer, _nCells, _nNodes, _polyDerM, mul1)
+
+    Computes the volume integral of the state variable's derivative for the DG operator.
+
+    # Arguments
+    - `state`: State vector.
+    - `idx`: Indexing information.
+    - `stateDer`: Output vector for the derivative.
+    - `_nCells`, `_nNodes`: Discretization parameters.
+    - `_polyDerM`: Polynomial derivative matrix.
+    - `mul1`: Allocation vector.
+
+    # Returns
+    Nothing. Modifies `stateDer` in place.
+    """
     @inline function volumeIntegraly!(state,idx, stateDer::Vector{Float64},_nCells::Int64,_nNodes::Int64,_polyDerM::Matrix{Float64},mul1::Vector{Float64})
         #Determines the Dc for all the cells in the grid
     
@@ -72,7 +113,6 @@ module ConvDispOperatorDG
     end
     
     
-    # calculates the volume Integral of the auxiliary equation
     @inline function volumeIntegral!(state, stateDer::Vector{Float64},_nCells::Int64,_nNodes::Int64,_polyDerM::Matrix{Float64},mul1::Vector{Float64})
         #Determines the Dc for all the cells in the grid
     
@@ -85,7 +125,26 @@ module ConvDispOperatorDG
         nothing
     end
     
-    # calculates the interface fluxes h* of Convection Dispersion equation
+    """
+        interfaceFlux!(_surfaceFlux, C, idx, d_ax, _g, u, _nCells, _nPoints, _deltaZ, cIn, _strideNode, _strideCell, _strideNode_g, _strideCell_g)
+
+    Computes the interface fluxes for the convection-dispersion operator in the DG discretization.
+
+    # Arguments
+    - `_surfaceFlux`: Output vector for the surface flux.
+    - `C`: State vector.
+    - `idx`: Indexing information.
+    - `d_ax`: Axial dispersion coefficient.
+    - `_g`: Auxiliary matrix or vector.
+    - `u`: Local velocity.
+    - `_nCells`, `_nPoints`: Discretization parameters.
+    - `_deltaZ`: Cell width.
+    - `cIn`: Inlet concentration.
+    - `_strideNode`, `_strideCell`, `_strideNode_g`, `_strideCell_g`: Stride and indexing parameters.
+
+    # Returns
+    Nothing. Modifies `_surfaceFlux` in place.
+    """
     @inline function interfaceFlux!(_surfaceFlux,C,idx, d_ax, _g, u, _nCells,_nPoints, _deltaZ, cIn, _strideNode, _strideCell, _strideNode_g, _strideCell_g)
         #- Determines the interfaces between the cells - hence the length is nCells +1
     
@@ -127,7 +186,25 @@ module ConvDispOperatorDG
         nothing
     end
     
-    # calculates the string form surface Integral using exact integration
+    """
+        surfaceIntegral!(stateDer, state, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer, _surfaceFlux, _nCells, _nNodes, _invMM, _polyDeg, _invWeights, _exactInt)
+
+    Computes the surface integral contribution to the state derivative in the DG operator.
+
+    # Arguments
+    - `stateDer`: Output vector for the state derivative.
+    - `state`: State vector.
+    - `strideNode_state`, `strideCell_state`, `strideNode_stateDer`, `strideCell_stateDer`: Stride and indexing parameters.
+    - `_surfaceFlux`: Surface flux vector.
+    - `_nCells`, `_nNodes`: Discretization parameters.
+    - `_invMM`: Inverse mass matrix.
+    - `_polyDeg`: Polynomial degree.
+    - `_invWeights`: Inverse quadrature weights.
+    - `_exactInt`: Integration method (`exact_integration` or `collocation`).
+
+    # Returns
+    Nothing. Modifies `stateDer` in place.
+    """
     @inline function surfaceIntegral!(stateDer,state, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt::exact_integration)
         #This function takes stateDer and subtracts M^-1 * (C-C*) at the interfaces. Because B is a sparse matrix, it takes input and subtract M^-1 B [state - state*]
         @inbounds for Cell in 1:_nCells

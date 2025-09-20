@@ -1,6 +1,28 @@
+"""
+create_units(model::Union{Dict, OrderedDict})
 
+Constructs and initializes the simulation units (inlets, outlets, columns) from a CADET model dictionary.
 
+# Arguments
+- `model::Union{Dict, OrderedDict}`: Parsed CADET model input, see test folder for examples.
+
+# Returns
+A tuple `(inlets, outlets, columns, switches, solverOptions)` where:
+- `inlets`: Tuple of inlet unit objects.
+- `outlets`: Tuple of outlet unit objects.
+- `columns`: Tuple of column unit objects (e.g., LRM, LRMP, GRM, cstr).
+- `switches`: Switches object containing section and connection information.
+- `solverOptions`: SolverCache object with solver configuration and initial conditions.
+
+# Details
+- Parses the model structure to instantiate all units and their connections.
+- Handles different unit types (INLET, OUTLET, LRM, LRMP, GRM, cstr).
+- Sets up connections, flow rates, and initial conditions.
+- Configures solver tolerances and time points.
+
+"""
 function create_units(model::Union{Dict, OrderedDict})
+    
     units = Dict{String, Any}()
     inlets = []
     columns = []
@@ -330,6 +352,25 @@ function create_units(model::Union{Dict, OrderedDict})
     return Tuple(inlets), Tuple(outlets), Tuple(columns), switches, solverOptions
 end
 
+"""
+get_bind(value, bindstride)
+
+Constructs and returns the appropriate binding model object for a column based on the model specified for file_reader.
+
+# Arguments
+- `value`: Dictionary containing adsorption and discretization parameters for the unit.
+- `bindstride`: Integer specifying the stride or number of binding sites/components.
+
+# Returns
+A binding model object (e.g., `Linear`, `Langmuir`, etc.) configured according to the provided parameters.
+
+# Details
+- Determines the adsorption model type (e.g., LINEAR, MULTI_COMPONENT_LANGMUIR) and extracts relevant kinetic and equilibrium parameters.
+- Handles both kinetic and equilibrium binding models.
+- Converts and validates the number of bound components.
+```
+
+"""
 function get_bind(value,bindstride)
 	# If a kinetic constant is specified 
 	kkin = haskey(value["adsorption"], "kkin") ? value["adsorption"]["kkin"] : 1.0
@@ -385,7 +426,29 @@ function get_bind(value,bindstride)
 end
 
 
+"""
+create_units(model::HDF5.File)
 
+Constructs and initializes the simulation units (inlets, outlets, columns) from a CADET HDF5 file.
+
+# Arguments
+- `model::HDF5.File`: Opened CADET HDF5 file.
+
+# Returns
+A tuple `(inlets, outlets, columns, switches, solverOptions)` where:
+- `inlets`: Tuple of inlet unit objects.
+- `outlets`: Tuple of outlet unit objects.
+- `columns`: Tuple of column unit objects (e.g., LRM, LRMP, GRM, cstr).
+- `switches`: Switches object containing section and connection information.
+- `solverOptions`: SolverCache object with solver configuration and initial conditions.
+
+# Details
+- Parses the model structure to instantiate all units and their connections.
+- Handles different unit types (INLET, OUTLET, LRM, LRMP, GRM, cstr).
+- Sets up connections, flow rates, and initial conditions.
+- Configures solver tolerances and time points.
+
+"""
 function create_units(model::HDF5.File)
     units = Dict{String, Any}()
     inlets = []

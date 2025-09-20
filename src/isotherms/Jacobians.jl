@@ -1,6 +1,18 @@
 
-# Finite differences for computing jacobian prototype. 
-# The ODEsolver uses the sparsity pattern to solve the ODEs faster 
+"""
+    jac_finite_diff(F, p, x0, epsilon=1e-8)
+
+Computes the Jacobian matrix of a system of ODEs using finite differences.
+
+# Arguments
+- `F`: Function defining the ODE system, called as `F(RHS, x, p, t)`.
+- `p`: Parameters passed to `F`.
+- `x0`: State vector at which to compute the Jacobian.
+- `epsilon`: Perturbation size for finite differences (default: 1e-8).
+
+# Returns
+The Jacobian matrix as a dense array.
+"""
 function jac_finite_diff(F, p, x0, epsilon=1e-8)
 	n = length(x0)  # Number of variables in the system
 	jacProto = zeros(n, n)  # Initialize the Jacobian matrix
@@ -22,7 +34,20 @@ function jac_finite_diff(F, p, x0, epsilon=1e-8)
 	return jacProto
 end
 
-# Same as above just for DAEs instead
+"""
+    jac_finite_diff_dae(F, p, x0, epsilon=1e-8)
+
+Computes the Jacobian matrix of a system of DAEs using finite differences.
+
+# Arguments
+- `F`: Function defining the DAE system, called as `F(out, y, x, p, t)`.
+- `p`: Parameters passed to `F`.
+- `x0`: State vector at which to compute the Jacobian.
+- `epsilon`: Perturbation size for finite differences (default: 1e-8).
+
+# Returns
+The Jacobian matrix as a dense array.
+"""
 function jac_finite_diff_dae(F, p, x0, epsilon=1e-8)
 	n = length(x0)  # Number of variables in the system
 	jacProto = zeros(n, n)  # Initialize the Jacobian matrix
@@ -46,7 +71,19 @@ function jac_finite_diff_dae(F, p, x0, epsilon=1e-8)
 	return jacProto
 end
 
-# Compute the static jacobian and determine allocation matrices determining the Jacobian 
+"""
+    jac_static(model, u, p)
+
+Computes the static (time-invariant) Jacobian matrix for the model and returns allocation matrices for Jacobian blocks.
+
+# Arguments
+- `model`: Model object containing discretization and physical parameters.
+- `u`: State vector.
+- `p`: Parameters for the model.
+
+# Returns
+A tuple containing the convection-dispersion Jacobian and allocation matrices for the isotherm Jacobian blocks.
+"""
 function jac_static(model, u, p) #
 	
     # Get the convection dispersion jacobian operator, located in ConvDispOperatorDGJac
@@ -103,6 +140,20 @@ end
 #     return (dcdc,dcdq,dqdc,dqdq,diagonaldqdc,ConvDispJac)
 # end
 
+"""
+    analytical_jac!(J, x, p, t)
+
+Computes the analytical Jacobian matrix for the ODE system and stores it in `J`.
+
+# Arguments
+- `J`: Jacobian matrix to be filled (modified in place).
+- `x`: State vector.
+- `p`: Parameters for the model.
+- `t`: Current time.
+
+# Returns
+Nothing. Modifies `J` in place.
+"""
 function analytical_jac!(J, x, p, t)
     model = p[1]
 
@@ -126,6 +177,22 @@ function analytical_jac!(J, x, p, t)
     nothing
 end
 
+"""
+    analytical_jac_dae!(J, RHS, x, p, gamma, t)
+
+Computes the analytical Jacobian matrix for a DAE system and stores it in `J`.
+
+# Arguments
+- `J`: Jacobian matrix to be filled (modified in place).
+- `RHS`: Right-hand side vector of the DAE system.
+- `x`: State vector.
+- `p`: Parameters for the model.
+- `gamma`: Scalar parameter for DAE solvers.
+- `t`: Current time.
+
+# Returns
+Nothing. Modifies `J` in place.
+"""
 function analytical_jac_dae!(J, RHS, x, p, gamma, t)
 
 	model = p[1]
