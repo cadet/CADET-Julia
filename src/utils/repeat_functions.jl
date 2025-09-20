@@ -1,6 +1,4 @@
 # Repeat functions to repeat patterns 
-
-
 function repeat_pattern(a::Vector{Int64}) 
     
     # Find the length of the last non-negative segment

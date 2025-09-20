@@ -11,37 +11,47 @@ struct NoDynamicFlow <: DynamicFlow end
 struct YesDynamicFlow <: DynamicFlow end
 
 
-# Flow rate determination 
-function get_inlet_flows!(switches, dynamic_flow::NoDynamicFlow, section, sink, t, m)
-    """ 
-        If dynamic flow is inactivated, do nothing 
-        Inputs are: 
-        switches: The switches object
-        dynamic_flow: The dynamic flow object, activated or not
-        section: The section number
-        sink: The sink(unit) number
-        t: The time
-        m: The model object
-    """
+"""
+    get_inlet_flows!(switches, dynamic_flow::NoDynamicFlow, section, sink, t, m)
 
+No-op function for static flow rates. If dynamic flow is not activated, this function does nothing.
+
+# Arguments
+- `switches`: The switches object.
+- `dynamic_flow`: The dynamic flow object (should be `NoDynamicFlow`).
+- `section`: Section index.
+- `sink`: Sink (unit) index.
+- `t`: Current time.
+- `m`: Model object.
+
+# Returns
+Nothing. Leaves all velocities unchanged.
+"""
+function get_inlet_flows!(switches, dynamic_flow::NoDynamicFlow, section, sink, t, m)
     nothing 
 end
     
+"""
+    get_inlet_flows!(switches, dynamic_flow::YesDynamicFlow, section, sink, t, m)
 
+Updates the inlet and unit velocities for a given section and sink when dynamic flow rates are active. Modifies the `u_inlet`, `u_unit`, and `u_tot` fields of the `ConnectionInstance` object based on time-dependent flow coefficients.
+
+# Arguments
+- `switches`: The switches object.
+- `dynamic_flow`: The dynamic flow object (should be `YesDynamicFlow`).
+- `section`: Section index.
+- `sink`: Sink (unit) index.
+- `t`: Current time.
+- `m`: Model object (must have `eps_c` and `cross_section_area` fields).
+
+# Details
+- Calculates velocities as polynomials in time using the provided coefficients.
+- Updates the total velocity as the sum of inlet and unit velocities.
+
+# Returns
+Nothing. Modifies fields in-place.
+"""
 function get_inlet_flows!(switches, dynamic_flow::YesDynamicFlow, section, sink, t, m)
-    """ 
-        If dynamic flow is activated, determine inlet velocity by modifying the fields 
-        Inputs are: 
-        switches: The switches object
-        dynamic_flow: The dynamic flow object, activated or not
-        section: The section number
-        sink: The sink(unit) number
-        t: The time
-        m: The model object
-
-        modifies the u_inlet, u_unit and u_tot fields of the ConnectionInstance object
-    """
-
 
     # Mofifying the inlet velocity from inlets
     for l in eachindex(switches.ConnectionInstance.Q_inlet_c[switches.switchSetup[section]][sink])

@@ -1,6 +1,29 @@
+"""
+    SolverCache(; columns, switches, outlets, x0, abstol, reltol, dt, solution_times, prototypeJacobian, analyticalJacobian)
 
+Constructs a cache object for solver options and initial conditions, including tolerances, time stepping, and index bookkeeping for all units in the simulation.
 
+# Arguments
+- `columns`: Tuple or array of column unit objects (and CSTRs).
+- `switches`: Switches object containing section and connection information.
+- `outlets`: Tuple of outlet unit objects (optional).
+- `x0`: Initial condition vector (optional, defaults to zeros).
+- `abstol`: Absolute tolerance for the ODE solver.
+- `reltol`: Relative tolerance for the ODE solver.
+- `dt`: Time step for the solution.
+- `solution_times`: Vector of solution time points.
+- `prototypeJacobian`: Whether to use a prototype Jacobian for efficiency.
+- `analyticalJacobian`: Whether to use an analytical Jacobian (if available).
 
+# Details
+- Sets up initial conditions and solution matrices for all units and outlets.
+- Handles flexible input for initial conditions.
+- Computes index offsets for each unit.
+- Repeats switch patterns and inlet concentrations as needed.
+
+# Returns
+A `SolverCache` object with all solver configuration and initial state.
+"""
 
 mutable struct SolverCache
 	# Here, initial conditions and solver options are specified. 
@@ -169,17 +192,25 @@ mutable struct SolverCache
 	end
 end
 
+"""
+    rearrange_switch_setup(switches)
+
+Rearranges the `switchSetup` vector in the `switches` object to ensure a valid and complete switch pattern for all section times.
+
+# Arguments
+- `switches`: The `Switches` object containing the current `switchSetup` vector and number of switches.
+
+# Returns
+A vector of integers representing the rearranged switch setup, with length equal to the number of section times.
+
+# Details
+- If only one switch is specified, repeats it for all sections.
+- If multiple switches are specified, repeats or cycles the pattern as needed.
+- If `-1` is used as a placeholder, fills remaining entries by repeating the last valid switch.
+- Ensures that every section has a valid switch assignment, preventing incomplete or ambiguous configurations.
+"""
+
 function rearrange_switch_setup(switches)
-	"""
-		A function to rearrange the switchSetup such that it follows a repeated pattern.
-		Inputs are:
-		switches: The switches object
-
-		Outputs are:
-		a: The rearranged switchSetup
-
-		If there is only one switch, it copy the switches for the number of section times.
-	"""
 	a = -ones(Int64,length(switches.switchSetup))
 
 	#if there is only one switch

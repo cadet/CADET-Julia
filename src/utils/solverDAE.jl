@@ -1,10 +1,24 @@
+"""
+    solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(0,), alg=IDA(init_all=false))
 
+Solves the system of differential-algebraic equations (DAEs) for the specified model using the provided DAE solver algorithm.
 
+# Arguments
+- `columns`: Tuple or array of column unit objects to be simulated.
+- `switches::Switches`: Switches object containing section times and connection information.
+- `solverOptions`: SolverCache object with initial conditions, tolerances, and solver settings.
+- `outlets`: Tuple of outlet unit objects (optional).
+- `alg`: DAE solver algorithm to use (defaults to IDA).
 
+# Details
+- Iterates over all section times, updating parameters and solving the DAE system for each section.
+- Handles both static and analytical Jacobians, as well as prototype Jacobians for efficiency.
+- Updates solution matrices for columns and outlets after each section.
+- Supports dynamic inlets and multiple unit types.
 
-
-
-# Solve the differential equations using the ODE solver
+# Returns
+Nothing. Results are stored in the `solution_outlet` and `solution_times` fields of the column and outlet objects.
+"""
 function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(0,), alg=IDA(init_all=false))
 	# To have outlets as a tuple
 	if typeof(columns)<:ModelBase
@@ -117,7 +131,25 @@ function solve_model_dae(; columns, switches::Switches, solverOptions, outlets=(
     return nothing
 end
 
-# Define the function representing the differential equations for transport and binding
+"""
+    problemDAE!(out, RHS, x, p, t)
+
+Defines the system of DAEs for the model, assembling the residual vector for the DAE solver.
+
+# Arguments
+- `out`: Output vector for the DAE residuals.
+- `RHS`: Vector for the right-hand side of the ODE part.
+- `x`: Current state vector.
+- `p`: Tuple of parameters, including columns, allocation vectors, section index, and switches.
+- `t`: Current simulation time.
+
+# Details
+- Loops over all units (columns) and calls the appropriate transport and binding functions for each to fill the residual vector.
+- Intended for use as the DAE function in the solver.
+
+# Returns
+Nothing. Modifies `out` in place.
+"""
 function problemDAE!(out, RHS, x, p, t)
     columns, RHS_q, cpp, qq, i, nColumns, idx_units, switches = p
 	# i corresponds to section 
@@ -147,7 +179,19 @@ function problemDAE!(out, RHS, x, p, t)
 end
 
 
-# Define the function representing the differential equations for transport and binding
+"""
+    initialize_dae!(dx0, x0, p)
+
+Initializes the DAE system by computing consistent initial derivatives for the state variables.
+
+# Arguments
+- `dx0`: Output vector for the initial derivatives.
+- `x0`: Initial state vector.
+- `p`: Tuple of parameters for the model.
+
+# Returns
+Nothing. Modifies `dx0` in place.
+"""
 function initialize_dae!(dx0, x0, p)
 	columns, RHS_q, cpp, qq, i, nColumns, idx_units, switches = p
 
