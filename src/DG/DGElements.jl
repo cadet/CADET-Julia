@@ -2,17 +2,7 @@
 module DGElements
 using SpecialFunctions, LinearAlgebra
 
-"""
-    lglnodes(N)
-
-Computes the Legendre-Gauss-Lobatto (LGL) nodes and weights for polynomial degree `N`.
-
-# Arguments
-- `N`: Polynomial degree.
-
-# Returns
-A tuple `(x, w)` where `x` are the LGL nodes and `w` are the corresponding weights.
-"""
+#LGL nodes and weights
 function lglnodes(N)
     # Truncation + 1
     N1 = N + 1
@@ -46,20 +36,240 @@ function lglnodes(N)
     return reverse(x), 1 ./ w
 end
 
+# Legendre-Gauss (LG) nodes and weights
+function lgnodes(N)
+    N1 = N + 1
 
-"""
-    barycentricWeights(baryWeights, _polyDeg, _nodes)
+    x = zeros(N1)
+    for i in 1:N1
+        x[i] = -cos((2*i - 1) * pi / (2*N1))
+    end
 
-Computes barycentric weights.
+    # Legendre polynomial values
+    P = zeros(N1, N1 + 1)
 
-# Arguments
-- `baryWeights`: Vector to store barycentric weights (should be initialized with ones).
-- `_polyDeg`: Polynomial degree.
-- `_nodes`: Vector of interpolation nodes.
+    # Newton-Raphson iteration to find roots of P_{N+1}(x)
+    xold = ones(N1) .* 2.0
 
-# Returns
-The vector of barycentric weights.
-"""
+    while maximum(abs.(x .- xold)) > eps()
+        xold[:] = x
+
+        P[:, 1] .= 1.0
+        P[:, 2] = x
+
+        # Three-term recurrence for Legendre polynomials
+        for k = 2:N1
+            P[:, k + 1] = ((2*k - 1) .* x .* P[:, k] - (k - 1) .* P[:, k - 1]) ./ k
+        end
+
+        # Newton-Raphson update: x_{n+1} = x_n - P_{N+1}(x_n) / P'_{N+1}(x_n)
+        # where P'_{N+1}(x) = (N+1) / (x^2 - 1) * [x * P_{N+1}(x) - P_N(x)]
+        for i in 1:N1
+            dP = (N1) / (x[i]^2 - 1.0) * (x[i] * P[i, N1 + 1] - P[i, N1])
+            x[i] = xold[i] - P[i, N1 + 1] / dP
+        end
+    end
+
+    # Compute weights: w_i = 2 / [(1 - x_i^2) * (P'_{N+1}(x_i))^2]
+    w = zeros(N1)
+    for i in 1:N1
+        dP = (N1) / (x[i]^2 - 1.0) * (x[i] * P[i, N1 + 1] - P[i, N1])
+        w[i] = 2.0 / ((1.0 - x[i]^2) * dP^2)
+    end
+
+    return x, 1 ./ w
+end
+
+# Chebyshev-Gauss-Lobatto nodes and weights
+function cglnodes(N)
+    N1 = N + 1
+
+    # Chebyshev-Gauss-Lobatto nodes: x_j = -cos(π*j/N)
+    x = zeros(N1)
+    for j in 0:N
+        x[j+1] = -cos(pi * j / N)
+    end
+
+    # Weights for Chebyshev-Gauss-Lobatto quadrature
+    w = zeros(N1)
+    w[1] = pi / (2 * N)
+    w[N1] = pi / (2 * N)
+    for j in 1:(N-1)
+        w[j+1] = pi / N
+    end
+
+    return x, 1 ./ w
+end
+
+# Chebyshev-Gauss nodes and weights
+function cgnodes(N)
+    # N+1 interior nodes
+    N1 = N + 1
+
+    # Chebyshev-Gauss nodes: x_j = -cos(π*(2j+1)/(2N+2))
+    x = zeros(N1)
+    for j in 0:N
+        x[j+1] = -cos(pi * (2*j + 1) / (2 * N1))
+    end
+
+    # Weights for Chebyshev-Gauss quadrature (all equal)
+    w = fill(pi / N1, N1)
+
+    return x, 1 ./ w
+end
+
+# Chebyshev polynomial evaluation using three-term recurrence (Algorithm 28 from Kopriva 2009)
+function chebyshev_poly(x, N)
+    # Evaluate Chebyshev polynomials T_0, T_1, ..., T_N at point x
+    # Returns vector of length N+1
+    T = zeros(N + 1)
+
+    # Initial values
+    T[1] = 1.0  # T_0(x) = 1
+    if N >= 1
+        T[2] = x  # T_1(x) = x
+    end
+
+    # Three-term recurrence: T_{n+1}(x) = 2*x*T_n(x) - T_{n-1}(x)
+    for n in 1:(N-1)
+        T[n+2] = 2.0 * x * T[n+1] - T[n]
+    end
+
+    return T
+end
+
+# Chebyshev polynomial first derivative evaluation
+function chebyshev_poly_derivative(x, N)
+    # Evaluate first derivatives T'_0, T'_1, ..., T'_N at point x
+    # Returns vector of length N+1
+    T = chebyshev_poly(x, N)
+    dT = zeros(N + 1)
+
+    # Initial values
+    dT[1] = 0.0  # T'_0(x) = 0
+    if N >= 1
+        dT[2] = 1.0  # T'_1(x) = 1
+    end
+
+    # Recurrence relation: T'_{n+1}(x) = 2*T_n(x) + 2*x*T'_n(x) - T'_{n-1}(x)
+    for n in 1:(N-1)
+        dT[n+2] = 2.0 * T[n+1] + 2.0 * x * dT[n+1] - dT[n]
+    end
+
+    return dT
+end
+
+# Chebyshev polynomial second derivative evaluation
+function chebyshev_poly_second_derivative(x, N)
+    # Evaluate second derivatives T''_0, T''_1, ..., T''_N at point x
+    # Returns vector of length N+1
+    T = chebyshev_poly(x, N)
+    dT = chebyshev_poly_derivative(x, N)
+    d2T = zeros(N + 1)
+
+    # Initial values
+    d2T[1] = 0.0  # T''_0(x) = 0
+    if N >= 1
+        d2T[2] = 0.0  # T''_1(x) = 0
+    end
+    if N >= 2
+        d2T[3] = 4.0  # T''_2(x) = 4
+    end
+
+    # Recurrence: T''_{n+1}(x) = 4*T'_n(x) + 2*x*T''_n(x) - T''_{n-1}(x)
+    for n in 2:(N-1)
+        d2T[n+2] = 4.0 * dT[n+1] + 2.0 * x * d2T[n+1] - d2T[n]
+    end
+
+    return d2T
+end
+
+# Chebyshev polynomial arbitrary derivative evaluation
+function chebyshev_poly_nth_derivative(x, N, n_deriv)
+    # Evaluate nth derivatives at point x
+    # n_deriv: order of derivative
+    if n_deriv == 0
+        return chebyshev_poly(x, N)
+    elseif n_deriv == 1
+        return chebyshev_poly_derivative(x, N)
+    elseif n_deriv == 2
+        return chebyshev_poly_second_derivative(x, N)
+    else
+        # For higher derivatives, use the general recurrence
+        error("Derivatives of order > 2 not yet implemented")
+    end
+end
+
+# Chebyshev Vandermonde matrix (based on Kopriva 2009)
+function getVandermonde_CHEBYSHEV(_nodes, _polyDeg)
+    N1 = length(_nodes)
+    V = zeros(Float64, N1, N1)
+
+    # Fill Vandermonde matrix: V[i,j] = T_{j-1}(x_i)
+    for i in 1:N1
+        T = chebyshev_poly(_nodes[i], _polyDeg)
+        V[i, :] = T
+    end
+
+    return V
+end
+
+# Normalized/Orthogonal Chebyshev Vandermonde matrix
+function getVandermonde_CHEBYSHEV_NORMALIZED(_nodes, _polyDeg)
+    N1 = length(_nodes)
+    V = zeros(Float64, N1, N1)
+
+    # Normalization factors for orthogonal Chebyshev polynomials
+    # ∫_{-1}^{1} T_n(x) T_m(x) / √(1-x²) dx = 0 if n≠m, π/2 if n=m>0, π if n=m=0
+    norm = zeros(N1)
+    norm[1] = sqrt(pi)  # ||T_0||
+    for n in 1:_polyDeg
+        norm[n+1] = sqrt(pi / 2.0)  # ||T_n|| for n > 0
+    end
+
+    # Fill normalized Vandermonde matrix
+    for i in 1:N1
+        T = chebyshev_poly(_nodes[i], _polyDeg)
+        for j in 1:N1
+            V[i, j] = T[j] / norm[j]
+        end
+    end
+
+    return V
+end
+
+# Chebyshev derivative matrix (Vandermonde approach)
+function chebyshev_derivative_vandermonde(_nodes, _polyDeg)
+    N1 = length(_nodes)
+    DV = zeros(Float64, N1, N1)
+
+    # Fill derivative Vandermonde matrix: DV[i,j] = T'_{j-1}(x_i)
+    for i in 1:N1
+        dT = chebyshev_poly_derivative(_nodes[i], _polyDeg)
+        DV[i, :] = dT
+    end
+
+    return DV
+end
+
+# Chebyshev mass matrix (for Gauss or Gauss-Lobatto quadrature)
+function chebyshev_mass_matrix(_nodes, _polyDeg)
+    # M = V^T * V for normalized Chebyshev basis
+    V = getVandermonde_CHEBYSHEV_NORMALIZED(_nodes, _polyDeg)
+    return V' * V
+end
+
+# Chebyshev stiffness matrix
+function chebyshev_stiffness_matrix(_nodes, _polyDeg)
+    # S = V^T * D * V where D is the derivative matrix
+    V = getVandermonde_CHEBYSHEV_NORMALIZED(_nodes, _polyDeg)
+    D = derivativeMatrix(_polyDeg, _nodes)
+    return V' * D * V
+end
+
+
+# computation of barycentric weights for fast polynomial evaluation
+# @param [in] baryWeights vector to store barycentric weights. Must already be initialized with ones!
 function barycentricWeights(baryWeights,_polyDeg,_nodes)
     for j in 1:_polyDeg
         for k in 0:j-1
@@ -73,18 +283,7 @@ function barycentricWeights(baryWeights,_polyDeg,_nodes)
     return baryWeights
 end
 
-"""
-    derivativeMatrix(_polyDeg, _nodes)
-
-Computes the nodal (Lagrange) polynomial derivative matrix for a given set of nodes.
-
-# Arguments
-- `_polyDeg`: Polynomial degree.
-- `_nodes`: Vector of interpolation nodes.
-
-# Returns
-A matrix of derivatives of the Lagrange basis polynomials at the nodes.
-"""
+# @brief computation of nodal (lagrange) polynomial derivative matrix
 function derivativeMatrix(_polyDeg,_nodes)
     baryWeights = ones(_polyDeg + 1)
     baryWeights = barycentricWeights(baryWeights,_polyDeg,_nodes)
@@ -101,18 +300,7 @@ function derivativeMatrix(_polyDeg,_nodes)
 end
 
 
-"""
-    orthonFactor(polyDeg, a=0.0, b=0.0)
-
-Computes the normalization factor for Jacobi or Legendre polynomials.
-
-# Arguments
-- `polyDeg`: Polynomial degree.
-- `a`, `b`: Jacobi polynomial parameters (default 0.0 for Legendre).
-
-# Returns
-The normalization factor as a Float64.
-"""
+#  factor to normalize legendre polynomials
 function orthonFactor(polyDeg, a = 0.0, b = 0.0)
     # a = alpha, b = beta
     n = polyDeg
@@ -120,19 +308,7 @@ function orthonFactor(polyDeg, a = 0.0, b = 0.0)
     return sqrt(((2.0 * n + a + b + 1.0) * gamma(n + 1.0) * gamma(n + a + b + 1.0)) / (2.0^(a + b + 1.0) * gamma(n + a + 1.0) * gamma(n + b + 1.0)))
 end
 
-"""
-    jacVandermondeMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
-
-Calculates the Vandermonde matrix of normalized Jacobi polynomials at the given nodes.
-
-# Arguments
-- `_nodes`: Vector of interpolation nodes.
-- `_polyDeg`: Polynomial degree.
-- `alpha`, `beta`: Jacobi polynomial parameters (optional).
-
-# Returns
-The Vandermonde matrix as a 2D array.
-"""
+# calculates the Vandermonde matrix of the normalized jacobi polynomials
 function jacVandermondeMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     
     V = zeros(Float64, length(_nodes), length(_nodes))
@@ -159,19 +335,7 @@ function jacVandermondeMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return V
 end
 
-"""
-    getVandermonde_LEGENDRE(_nodes, _polyDeg, alpha=0.0, beta=0.0)
-
-Calculates the Vandermonde matrix of normalized Legendre polynomials at the given nodes.
-
-# Arguments
-- `_nodes`: Vector of interpolation nodes.
-- `_polyDeg`: Polynomial degree.
-- `alpha`, `beta`: Parameters (optional, default to Legendre).
-
-# Returns
-The Vandermonde matrix as a 2D array.
-"""
+# calculates the Vandermonde matrix of the normalized legendre polynomials
 function getVandermonde_LEGENDRE(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     
     V = zeros(Float64, length(_nodes), length(_nodes))
@@ -198,65 +362,106 @@ function getVandermonde_LEGENDRE(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return V
 end
 
-"""
-    invMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
-
-Computes the inverse mass matrix for the given nodes and polynomial degree.
-
-# Arguments
-- `_nodes`: Vector of interpolation nodes.
-- `_polyDeg`: Polynomial degree.
-- `alpha`, `beta`: Jacobi polynomial parameters (optional).
-
-# Returns
-The inverse mass matrix as a 2D array.
-"""
+#Inverse mass matrix
 function invMMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     _invMM = jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta) * transpose(jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta))
     return _invMM
 end
 
-"""
-    MMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
-
-Computes the mass matrix for the given nodes and polynomial degree.
-
-# Arguments
-- `_nodes`: Vector of interpolation nodes.
-- `_polyDeg`: Polynomial degree.
-- `alpha`, `beta`: Jacobi polynomial parameters (optional).
-
-# Returns
-The mass matrix as a 2D array.
-"""
+# Mass matrix
 function MMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return inv(invMMatrix(_nodes,_polyDeg, alpha, beta))
 end
 
-# #Stiffness matrix
-# function steifMatrix(_nodes,_polyDeg)
-#     #Mass matrix * Derivative matrix
-#     _steifMatrix = (getVandermonde_LEGENDRE(_nodes,_polyDeg) * transpose(getVandermonde_LEGENDRE(_nodes,_polyDeg)))^-1 * derivativeMatrix(_polyDeg,_nodes) 
-#     return _steifMatrix
-# end
+#Stiffness matrix
+function steifMatrix(_nodes,_polyDeg)
+    #Mass matrix * Derivative matrix
+    _steifMatrix = (getVandermonde_LEGENDRE(_nodes,_polyDeg) * transpose(getVandermonde_LEGENDRE(_nodes,_polyDeg)))^-1 * derivativeMatrix(_polyDeg,_nodes) 
+    return _steifMatrix
+end
 
-"""
-    second_order_stiff_matrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
-
-Computes the second-order stiffness matrix for the given nodes and polynomial degree.
-
-# Arguments
-- `_nodes`: Vector of interpolation nodes.
-- `_polyDeg`: Polynomial degree.
-- `alpha`, `beta`: Jacobi polynomial parameters (optional).
-
-# Returns
-The second-order stiffness matrix as a 2D array.
-"""
+# Second order stiffness matrix
 function second_order_stiff_matrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     #Mass matrix * Derivative matrix
     return Transpose(derivativeMatrix(_polyDeg,_nodes)) * MMatrix(_nodes,_polyDeg, alpha, beta) * derivativeMatrix(_polyDeg,_nodes)
 end
 
+# hatrho Weighted mass matrix and its inverse
+function weightedMMatrix(_nodes,_polyDeg, rho_i::Vector{Float64}, _deltarho::Float64)
+    # Precompute base mass matrices once
+    M00 = MMatrix(_nodes, _polyDeg, 0, 0)
+    M01 = MMatrix(_nodes, _polyDeg, 0, 1)
+
+    # Compute weighted mass matrix and its inverse for each cell
+    nCells = length(rho_i) - 1
+    rMM = Vector{Matrix{Float64}}(undef, nCells)
+    invrMM = Vector{Matrix{Float64}}(undef, nCells)
+
+    for Cell in 1:nCells
+        # M_ρ = ρ_i * M(0,0) + (Δρ/2) * M(0,1)
+        rMM[Cell] = rho_i[Cell] .* M00 .+ (_deltarho/2) .* M01
+        # Precompute inverse
+        invrMM[Cell] = inv(rMM[Cell])
+    end
+
+    return rMM, invrMM
+end
+
+function dispersionWeightedMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function})
+    nCells = length(rho_i) - 1
+    nNodes = _polyDeg + 1
+    S_g = Vector{Matrix{Float64}}(undef, nCells)
+    quad_nodes, quad_invWeights = lgnodes(_polyDeg)
+    quad_weights = 1.0 ./ quad_invWeights
+    nQuad = length(quad_nodes)
+
+    lagrange_at_quad = zeros(Float64, nNodes, nQuad)
+    for k in 1:nNodes
+        for q in 1:nQuad
+            lagrange_at_quad[k, q] = 1.0
+            for m in 1:nNodes
+                if m != k
+                    lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                end
+            end
+        end
+    end
+
+    dlagrange_at_quad = zeros(Float64, nNodes, nQuad)
+    for q in 1:nQuad
+        for j in 1:nNodes
+            sum_terms = 0.0
+            for n in 1:nNodes
+                if n != j
+                    term = 1.0 / (_nodes[j] - _nodes[n])
+                    for p in 1:nNodes
+                        if p != j && p != n
+                            term *= (quad_nodes[q] - _nodes[p]) / (_nodes[j] - _nodes[p])
+                        end
+                    end
+                    sum_terms += term
+                end
+            end
+            dlagrange_at_quad[j, q] = sum_terms
+        end
+    end
+
+    for Cell in 1:nCells
+        S_g[Cell] = zeros(Float64, nNodes, nNodes)
+        jacobian = _deltarho / 2
+
+        for q in 1:nQuad
+            rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
+            d_rad_q = isa(d_rad, Function) ? d_rad(rho_q) : d_rad
+            weight_factor = quad_weights[q] * rho_q * d_rad_q
+            for j in 1:nNodes
+                for k in 1:nNodes
+                    S_g[Cell][j, k] += weight_factor * dlagrange_at_quad[j, q] * lagrange_at_quad[k, q]
+                end
+            end
+        end
+    end
+    return S_g
+end
 
 end
