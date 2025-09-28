@@ -9,6 +9,7 @@ push!(LOAD_PATH, joinpath(rel_path, "src", "DG")) #Load path to DG folder
 # Import necessary Julia packages and custom modules
 using DGElements
 using ConvDispOperatorDG
+using RadialConvDispOperatorDG
 # using OrdinaryDiffEq
 using DifferentialEquations
 using SparseArrays # To use sparse matrices 
@@ -24,6 +25,7 @@ using IncompleteLU
 # Include the Julia functions
 include(joinpath(rel_path,"src", "isotherms", "binding_base.jl"))
 include(joinpath(rel_path,"src", "DG", "model_base.jl"))
+include(joinpath(rel_path,"src", "DG", "radial_model_base.jl"))
 include(joinpath(rel_path,"src", "utils", "flow_rates.jl"))
 include(joinpath(rel_path,"src", "utils", "cstr.jl"))
 include(joinpath(rel_path,"src", "utils", "connections.jl"))
@@ -35,9 +37,6 @@ include(joinpath(rel_path,"src", "utils", "solver.jl"))
 include(joinpath(rel_path,"src", "utils", "solverDAE.jl"))
 include(joinpath(rel_path,"src", "isotherms", "Jacobians.jl"))
 include(joinpath(rel_path,"src", "DG", "conv_disp_operator_dg_jac.jl"))
-# 
-const root = @__DIR__
-include(joinpath(root, "src", "DG", "RadialDGElements.jl"))
-include(joinpath(root, "src", "DG", "RadialConvDispOperatorDG.jl"))
-include(joinpath(root, "src", "DG", "radial_model_base.jl"))
+include(joinpath(rel_path,"src", "DG", "radial_conv_disp_operator_dg_jac.jl"))
+#
 
