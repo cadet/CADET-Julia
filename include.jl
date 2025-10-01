@@ -37,6 +37,5 @@ include(joinpath(rel_path,"src", "utils", "solver.jl"))
 include(joinpath(rel_path,"src", "utils", "solverDAE.jl"))
 include(joinpath(rel_path,"src", "isotherms", "Jacobians.jl"))
 include(joinpath(rel_path,"src", "DG", "conv_disp_operator_dg_jac.jl"))
-include(joinpath(rel_path,"src", "DG", "radial_conv_disp_operator_dg_jac.jl"))
 #
 
