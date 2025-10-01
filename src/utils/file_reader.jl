@@ -39,7 +39,7 @@ function create_units(model::Union{Dict, OrderedDict})
         if occursin("unit_", key)
             unit_name = key
             unit_type = value["unit_type"]
-            flow_model = value["flow_model"]
+            flow_model = haskey(value, "flow_model") ? value["flow_model"] : nothing
 
             if unit_type == "INLET"
                 inlet_instance = CreateInlet(
@@ -110,7 +110,6 @@ function create_units(model::Union{Dict, OrderedDict})
 					    				col_inner_radius = value["col_inner_radius"]/1.0, 
                                         col_outer_radius = value["col_outer_radius"]/1.0, 
                                         col_height = value["col_height"]/1.0, 
-                                        v = value["velocity"]/1.0, 
 						    			d_rad = value["col_dispersion"]./1.0, 
 							    		eps_c = value["col_porosity"]/1.0, 
 								    	c0 = value["init_c"], 
@@ -126,7 +125,7 @@ function create_units(model::Union{Dict, OrderedDict})
                     push!(columnNumber, length(columnNumber)+1)
                     push!(columnIDs, unit_name)
                     units[unit_name] = column_instance
-                else
+                elseif flow_model == "AXIAL_FLOW_MODEL"
                     # Create column instance
                     # Replace the following line with your column instantiation logic
                     column_instance = LRM(nComp = value["ncomp"], 
@@ -155,7 +154,6 @@ function create_units(model::Union{Dict, OrderedDict})
                                             col_inner_radius = value["col_inner_radius"]/1.0, 
                                             col_outer_radius = value["col_outer_radius"]/1.0, 
                                             col_height = value["col_height"]/1.0, 
-                                            v = value["velocity"]/1.0, 
                                             d_rad = value["col_dispersion"]./1.0, 
                                             eps_c = value["col_porosity"]/1.0, 
                                             eps_p = value["par_porosity"]/1.0,
@@ -174,7 +172,7 @@ function create_units(model::Union{Dict, OrderedDict})
                     push!(columnNumber, length(columnNumber)+1)
                     push!(columnIDs, unit_name)
                     units[unit_name] = column_instance
-                else
+                elseif flow_model == "AXIAL_FLOW_MODEL"
                     # Create column instance
                     column_instance = LRMP(nComp = value["ncomp"], 
                                             colLength = value["col_length"]/1.0, 
@@ -207,7 +205,6 @@ function create_units(model::Union{Dict, OrderedDict})
                                             col_inner_radius = value["col_inner_radius"]/1.0, 
                                             col_outer_radius = value["col_outer_radius"]/1.0, 
                                             col_height = value["col_height"]/1.0, 
-                                            v = value["velocity"]/1.0, 
                                             d_rad = value["col_dispersion"]./1.0, 
                                             eps_c = value["col_porosity"]/1.0, 
                                             eps_p = value["par_porosity"]/1.0,
@@ -229,7 +226,7 @@ function create_units(model::Union{Dict, OrderedDict})
                     push!(columnNumber, length(columnNumber)+1)
                     push!(columnIDs, unit_name)
                     units[unit_name] = column_instance
-                else
+                elseif flow_model == "AXIAL_FLOW_MODEL"
                     # Create column instance
                     # Replace the following line with your column instantiation logic
                     column_instance = GRM(nComp = value["ncomp"], 

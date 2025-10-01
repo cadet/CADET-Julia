@@ -31,8 +31,7 @@ model["root"]["input"]["model"]["unit_001"]["col_dispersion"] = 1e-4
 model["root"]["input"]["model"]["unit_001"]["col_inner_radius"] = 1e-2
 model["root"]["input"]["model"]["unit_001"]["col_outer_radius"] = 1
 model["root"]["input"]["model"]["unit_001"]["col_height"] = 1
-model["root"]["input"]["model"]["unit_001"]["velocity"] = (2/60)
-model["root"]["input"]["model"]["unit_001"]["adsorption_model"] = "LINEAR"
+model["root"]["input"]["model"]["unit_001"]["input_velocity"] = (2/60)
 
 model["root"]["input"]["model"]["unit_001"]["adsorption"] = OrderedDict()
 model["root"]["input"]["model"]["unit_001"]["adsorption"]["is_kinetic"] = false
