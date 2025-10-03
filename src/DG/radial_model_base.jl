@@ -11,10 +11,10 @@ mutable struct RadialConvDispOp
 	nodes::Vector{Float64}
     invWeights::Vector{Float64}
     invMM::Matrix{Float64}
+    MM::Matrix{Float64}
     polyDerM::Matrix{Float64}
 	invMrhoM::Vector{Matrix{Float64}}
     SgMatrix::Union{Nothing, Vector{Matrix{Float64}}}
-	MKMatrix::Union{Nothing, Vector{Matrix{Float64}}}
     deltarho::Float64
     rho_i::Vector{Float64}
     rho_ip1::Vector{Float64}
@@ -27,7 +27,7 @@ mutable struct RadialConvDispOp
     Dg::Vector{Float64}
     h::Vector{Float64}
 
-	function RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius; d_rad_const::Union{Nothing,Float64}=nothing, kf_const::Union{Nothing,Float64}=nothing)
+	function RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius; d_rad_const::Union{Nothing,Float64}=nothing)
 
 		nNodes = polyDeg + 1
 		nPoints = nNodes * nCells	#Number of cells times number of nodes per component
@@ -45,6 +45,7 @@ mutable struct RadialConvDispOp
 		# Obtain LGL nodes and weights
 		nodes, invWeights = DGElements.lglnodes(polyDeg) #LGL nodes & weights
 		invMM = DGElements.invMMatrix(nodes, polyDeg) #Inverse mass matrix
+		MM = DGElements.MMatrix(nodes, polyDeg)
 		polyDerM = DGElements.derivativeMatrix(polyDeg, nodes) #derivative matrix
 		# Build per-cell inverse rho-weighted mass matrices
 		invMrhoM = [
@@ -62,15 +63,6 @@ mutable struct RadialConvDispOp
 				for cell in 1:nCells
 			]
 		end
-		# Optionally build film diffusion matrix in-scope if a constant kf is provided
-		if kf_const === nothing
-			MKMatrix = nothing
-		else
-			MKMatrix = [
-				DGElements.weightedQuadrature(nodes, col_inner_radius + (cell-1)*deltarho, deltarho,hatrho -> hatrho .* kf_const)
-				for cell in 1:nCells
-			]
-		end
 
 		# allocation vectors and matrices
 		mul1 = zeros(Float64, nNodes)
@@ -80,7 +72,7 @@ mutable struct RadialConvDispOp
 		Dg = zeros(Float64, nPoints)
 		h = zeros(Float64, nPoints)
 
-		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, invWeights, invMM, polyDerM, invMrhoM, SgMatrix, MKMatrix, deltarho, rho_i, rho_ip1, mul1, c_star, g_star, Dc, Dg, h)
+		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, invWeights, invMM, MM, polyDerM, invMrhoM, SgMatrix, deltarho, rho_i, rho_ip1, mul1, c_star, g_star, Dc, Dg, h)
 	end
 end
 
@@ -148,8 +140,8 @@ end
 
 		# allocation vectors and matrices
 		idx = 1:RadialConvDispOpInstance.nPoints
-		Fc = (1-eps_c)/eps_c
-		Fjac = Fc # The phase ratio used for Jacobian i.e., dcdc = Fjac * dqdc
+		Fc = 0.0
+		Fjac = 0.0
 		cpp = zeros(Float64, RadialConvDispOpInstance.nPoints * nComp)
 		RHS_q = zeros(Float64, RadialConvDispOpInstance.nPoints * nComp)
 		qq = zeros(Float64, RadialConvDispOpInstance.nPoints * nComp)
@@ -194,9 +186,16 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 	# Determining inlet velocity if specified dynamically
 	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
     
+	# Precompute face velocities once per call (same for all components)
+	faces_v = RadialConvDispOperatorDG.compute_faces_v(
+		switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
+		m.RadialConvDispOpInstance.rho_i,
+		m.RadialConvDispOpInstance.rho_ip1,
+		m.col_inner_radius,
+		m.RadialConvDispOpInstance.nCells
+	)
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
-		
 		# Indices
 		# For the indicies regarding mobile phase, + idx_units[sink] must be added to get the right column 
 		# For the stationary phase, RHS_q is already a slice of the stationary phase of the right column
@@ -206,47 +205,48 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j]) 
 
 		# Convection Dispersion term
-		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.RadialConvDispOpInstance.nPoints * m.nComp] # mobile phase #
-	RadialConvDispOperatorDG.radialresidualImpl!(
-		m.RadialConvDispOpInstance.Dc,
-		cpp, m.idx,
-		m.RadialConvDispOpInstance.strideNode,
-		m.RadialConvDispOpInstance.strideCell,
-		m.RadialConvDispOpInstance.nPoints,
-		m.RadialConvDispOpInstance.nNodes,
-		m.RadialConvDispOpInstance.nCells,
-		m.RadialConvDispOpInstance.deltarho,
-		m.polyDeg,
-		m.RadialConvDispOpInstance.invWeights,
-		m.RadialConvDispOpInstance.nodes,
-		m.RadialConvDispOpInstance.polyDerM,
-		m.RadialConvDispOpInstance.invMM,
-		m.RadialConvDispOpInstance.invMrhoM,
-		m.RadialConvDispOpInstance.SgMatrix,
-		m.RadialConvDispOpInstance.MKMatrix,
-		switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
-		m.d_rad[j],
-		m.cIn[j],
-		m.RadialConvDispOpInstance.c_star,
-		m.RadialConvDispOpInstance.g_star,
-		m.RadialConvDispOpInstance.Dg,
-		m.RadialConvDispOpInstance.h,
-		m.RadialConvDispOpInstance.mul1,
-		m.exactInt,
-		Inf,
-		0.0,
-		cpp,
-		:do_nothing, 0.0,
-		m.RadialConvDispOpInstance.rho_i,
-		m.RadialConvDispOpInstance.rho_ip1,
-		m.col_inner_radius,
-		m.faces_v,
-    	m.left_scale_vec,
-    	m.right_scale_vec
-	)
+		cpp_block = @view x[1 + idx_units[sink] : idx_units[sink] + m.RadialConvDispOpInstance.nPoints * m.nComp]
+
+		# per-component diffusion scales (m.d_rad[j] can be scalar here)
+		D_left, D_right = RadialConvDispOperatorDG.diff_at_faces(m.d_rad[j], m.RadialConvDispOpInstance.rho_i, m.RadialConvDispOpInstance.rho_ip1)
+		left_scale_vec  = @. m.RadialConvDispOpInstance.rho_i  * D_left
+		right_scale_vec = @. m.RadialConvDispOpInstance.rho_ip1 * D_right
+
+		RadialConvDispOperatorDG.radialresidualImpl!(
+			m.RadialConvDispOpInstance.Dc,
+			cpp_block, m.idx,
+			m.RadialConvDispOpInstance.strideNode,
+			m.RadialConvDispOpInstance.strideCell,
+			m.RadialConvDispOpInstance.nNodes,
+			m.RadialConvDispOpInstance.nCells,
+			m.RadialConvDispOpInstance.deltarho,
+			m.polyDeg,
+			m.RadialConvDispOpInstance.invWeights,
+			m.RadialConvDispOpInstance.nodes,
+			m.RadialConvDispOpInstance.polyDerM,
+			m.RadialConvDispOpInstance.invMM,
+			m.RadialConvDispOpInstance.MM,
+			m.RadialConvDispOpInstance.invMrhoM,
+			m.RadialConvDispOpInstance.SgMatrix,
+			switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
+			m.d_rad[j],
+			m.cIn[j],
+			m.RadialConvDispOpInstance.c_star,
+			m.RadialConvDispOpInstance.g_star,
+			m.RadialConvDispOpInstance.Dg,
+			m.RadialConvDispOpInstance.h,
+			m.RadialConvDispOpInstance.mul1,
+			m.exactInt,
+			:neumann0, 0.0,
+			m.RadialConvDispOpInstance.rho_i,
+			m.RadialConvDispOpInstance.rho_ip1,
+			faces_v,
+			left_scale_vec,
+			right_scale_vec
+		)
 
 		# Mobile phase RHS 
-		@. @views RHS[m.idx .+ idx_units[sink]] = m.RadialConvDispOpInstance.Dc - m.Fc * RHS_q[m.idx]
+		@. @views RHS[m.idx .+ idx_units[sink]] = m.RadialConvDispOpInstance.Dc
 	end
 	
     nothing
@@ -294,6 +294,7 @@ mutable struct rLRMP <: RadialModelBase
 	cpp::Vector{Float64}
     RHS_q::Vector{Float64}
     qq::Vector{Float64}
+	film_vec::Vector{Float64}
 	RHS::Vector{Float64}
 	solution_outlet::Matrix{Float64}
 	solution_times::Vector{Float64}
@@ -303,7 +304,7 @@ mutable struct rLRMP <: RadialModelBase
 	function rLRMP(; nComp, col_inner_radius, col_outer_radius, col_height, d_rad, eps_c, eps_p, kf, Rp, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, exact_integration=1, cross_section_area=1.0)
 		
 		# Get necessary variables for convection dispersion DG 
-		RadialConvDispOpInstance = RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius, d_rad_const = (d_rad isa Float64 ? d_rad : nothing), kf_const = (kf isa Float64 ? kf : nothing))
+		RadialConvDispOpInstance = RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius, d_rad_const = (d_rad isa Float64 ? d_rad : nothing))
 
 		# The bind stride is the stride between each component for binding. For LRM, it is nPoints=(polyDeg + 1) * nCells
 		bindStride = RadialConvDispOpInstance.nPoints
@@ -320,6 +321,7 @@ mutable struct rLRMP <: RadialModelBase
 		RHS_q = zeros(Float64, RadialConvDispOpInstance.nPoints * nComp)
 		RHS = zeros(Float64, adsStride + 2*nComp*bindStride)
 		qq = zeros(Float64, RadialConvDispOpInstance.nPoints * nComp)
+		film_vec = zeros(Float64, RadialConvDispOpInstance.nPoints)
 		cIn = zeros(Float64, nComp)
 	
 		# if the axial dispersion is specified for a single component, assume they are the same for all components
@@ -353,7 +355,7 @@ mutable struct rLRMP <: RadialModelBase
 					)
 
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, col_inner_radius, col_outer_radius, col_height, cross_section_area, d_rad, eps_c, eps_p, kf, Rp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, RadialConvDispOpInstance, bindStride, adsStride, unitStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
+		new(nComp, col_inner_radius, col_outer_radius, col_height, cross_section_area, d_rad, eps_c, eps_p, kf, Rp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, RadialConvDispOpInstance, bindStride, adsStride, unitStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq, film_vec, RHS, solution_outlet, solution_times, bind)
 	end
 end
 
@@ -363,67 +365,74 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRMP, t, section, sink, swit
 	# Determining inlet velocity if specified dynamically
 	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
 	
+	# Precompute face velocities once per call (same for all components)
+	faces_v = RadialConvDispOperatorDG.compute_faces_v(
+		switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
+		m.RadialConvDispOpInstance.rho_i,
+		m.RadialConvDispOpInstance.rho_ip1,
+		m.col_inner_radius,
+		m.RadialConvDispOpInstance.nCells
+	)
+
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
-
 		# Indices
 		# For the indicies regarding mobile phase and pore phase, + idx_units[sink] must be added to get the right column 
 		# For the stationary phase, RHS_q is already a slice of the stationary phase of the right column
 		m.idx =  1 + (j-1) * m.RadialConvDispOpInstance.nPoints : m.RadialConvDispOpInstance.nPoints + (j-1) * m.RadialConvDispOpInstance.nPoints
 		m.idx_p = m.idx .+ m.RadialConvDispOpInstance.nPoints*m.nComp
 
-		
 		# Determining inlet concentration 
 		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j]) 
-		
 		# Convection Dispersion term	
 		# m.cpp = @view x[m.idx .+ idx_units[sink]] # mobile phase
-		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.RadialConvDispOpInstance.nPoints * m.nComp] # mobile phase		
-	RadialConvDispOperatorDG.radialresidualImpl!(
-		m.RadialConvDispOpInstance.Dc,
-		cpp, m.idx,
-		m.RadialConvDispOpInstance.strideNode,
-		m.RadialConvDispOpInstance.strideCell,
-		m.RadialConvDispOpInstance.nPoints,
-		m.RadialConvDispOpInstance.nNodes,
-		m.nCells,
-		m.RadialConvDispOpInstance.deltarho,
-		m.polyDeg,
-		m.RadialConvDispOpInstance.invWeights,
-		m.RadialConvDispOpInstance.nodes,
-		m.RadialConvDispOpInstance.polyDerM,
-		m.RadialConvDispOpInstance.invMM,
-		m.RadialConvDispOpInstance.invMrhoM,
-		m.RadialConvDispOpInstance.SgMatrix,
-		m.RadialConvDispOpInstance.MKMatrix,
-		switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
-		m.d_rad[j],
-		m.cIn[j],
-		m.RadialConvDispOpInstance.c_star,
-		m.RadialConvDispOpInstance.g_star,
-		m.RadialConvDispOpInstance.Dg,
-		m.RadialConvDispOpInstance.h,
-		m.RadialConvDispOpInstance.mul1,
-		m.exactInt,
-		1.0,
-		Inf,
-		m.kf[j],
-		cpp,
-		:do_nothing, 0.0,
-		m.RadialConvDispOpInstance.rho_i,
-		m.RadialConvDispOpInstance.rho_ip1,
-		m.col_inner_radius,
-		m.faces_v,
-    	m.left_scale_vec,
-    	m.right_scale_vec
-	)
+		cpp_block = @view x[1 + idx_units[sink] : idx_units[sink] + m.RadialConvDispOpInstance.nPoints * m.nComp]
+
+		D_left, D_right = RadialConvDispOperatorDG.diff_at_faces(m.d_rad[j], m.RadialConvDispOpInstance.rho_i, m.RadialConvDispOpInstance.rho_ip1)
+		left_scale_vec  = @. m.RadialConvDispOpInstance.rho_i  * D_left
+		right_scale_vec = @. m.RadialConvDispOpInstance.rho_ip1 * D_right
+
+		RadialConvDispOperatorDG.radialresidualImpl!(
+			m.RadialConvDispOpInstance.Dc,
+			cpp_block, m.idx,
+			m.RadialConvDispOpInstance.strideNode,
+			m.RadialConvDispOpInstance.strideCell,
+			m.RadialConvDispOpInstance.nNodes,
+			m.RadialConvDispOpInstance.nCells,
+			m.RadialConvDispOpInstance.deltarho,
+			m.polyDeg,
+			m.RadialConvDispOpInstance.invWeights,
+			m.RadialConvDispOpInstance.nodes,
+			m.RadialConvDispOpInstance.polyDerM,
+			m.RadialConvDispOpInstance.invMM,
+			m.RadialConvDispOpInstance.MM,
+			m.RadialConvDispOpInstance.invMrhoM,
+			m.RadialConvDispOpInstance.SgMatrix,
+			switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
+			m.d_rad[j],
+			m.cIn[j],
+			m.RadialConvDispOpInstance.c_star,
+			m.RadialConvDispOpInstance.g_star,
+			m.RadialConvDispOpInstance.Dg,
+			m.RadialConvDispOpInstance.h,
+			m.RadialConvDispOpInstance.mul1,
+			m.exactInt,
+			:neumann0, 0.0,
+			m.RadialConvDispOpInstance.rho_i,
+			m.RadialConvDispOpInstance.rho_ip1,
+			faces_v,
+			left_scale_vec,
+			right_scale_vec
+		)
+
+		# Compute film exchange vector
+		@. @views m.film_vec = m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
 
 		# Mobile phase
-		@. @views RHS[m.idx .+ idx_units[sink]] = m.RadialConvDispOpInstance.Dc - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
+		@. @views RHS[m.idx .+ idx_units[sink]] = m.RadialConvDispOpInstance.Dc - m.Fc * 3 / m.Rp * m.film_vec
 
 		# Pore phase dcp/dt = MT/eps_p - Fp dq/dt
-		@. @views RHS[m.idx_p .+ idx_units[sink]] = 3 / m.Rp / m.eps_p * m.kf[j] * (x[m.idx .+ idx_units[sink]]- x[m.idx_p .+ idx_units[sink]]) - m.Fp * RHS_q[m.idx] 
-
+		@. @views RHS[m.idx_p .+ idx_units[sink]] = 3 / (m.Rp * m.eps_p) * m.film_vec - m.Fp * RHS_q[m.idx]
 	end
 	
 	nothing
@@ -482,6 +491,7 @@ mutable struct rGRM <: RadialModelBase
 	cpp::Vector{Float64}
     RHS_q::Vector{Float64}
     qq::Vector{Float64}
+	film_vec::Vector{Float64}
 	solution_outlet::Matrix{Float64}
 	solution_times::Vector{Float64}
 	bind::bindingBase
@@ -490,7 +500,7 @@ mutable struct rGRM <: RadialModelBase
 	function rGRM(; nComp, col_inner_radius, col_outer_radius, col_height, d_rad, eps_c, eps_p, kf, Rp, Dp, Rc=0.0, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, polyDegPore=4, nCells=8, exact_integration=1, cross_section_area=1.0)
 		
 		# Get necessary variables for convection dispersion DG 
-		RadialConvDispOpInstance = RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius, d_rad_const = (d_rad isa Float64 ? d_rad : nothing), kf_const   = (kf   isa Float64 ? kf   : nothing))
+		RadialConvDispOpInstance = RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius, d_rad_const = (d_rad isa Float64 ? d_rad : nothing))
 
 		# allocation vectors and matrices
 		idx = 1:RadialConvDispOpInstance.nPoints
@@ -517,7 +527,6 @@ mutable struct rGRM <: RadialModelBase
 		#The pore grid goes from -1 to 1, to the physical domain that is
 		# r = Rc + 1/2 (xi+1)*(Rp-Rc) - such that xi=-1 -> r=Rc, assuming particle is from [Rc,Rp]
 		#Particle radius [m]
-		Rc = 0.0 # for this model, particle is set at the Rc=0
 		ri = Rc .+ 1/2 .* (DGElements.lglnodes(polyDegPore)[1] .+ 1) .* (Rp-Rc) #DGElements.lglnodes(polyDegPore)[1] = nodesPore
 
 		#Inverse Jacobian of the mapping
@@ -526,7 +535,7 @@ mutable struct rGRM <: RadialModelBase
 
 		#Inverse ri
 		invRi = 1 ./ ri
-		invRi[1] = 1.0 #WIll not be used anyway - to avoid inf
+		invRi[1] = 1.0
 
 		# Get necessary variables for pore phase DG 
 		PoreOpInstance = PoreOp(polyDegPore, RadialConvDispOpInstance.nPoints, nComp, Rc, Rp, deltarho, eps_p)
@@ -540,6 +549,7 @@ mutable struct rGRM <: RadialModelBase
 		cpp = zeros(Float64, PoreOpInstance.stridePore)
 		RHS_q = zeros(Float64, PoreOpInstance.stridePore)
 		qq = zeros(Float64, PoreOpInstance.stridePore)
+		film_vec = zeros(Float64, RadialConvDispOpInstance.nPoints)
 
 		# Solution_outlet as well 
 		solution_outlet = zeros(Float64,1,nComp)
@@ -562,7 +572,7 @@ mutable struct rGRM <: RadialModelBase
 					)
 		
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, col_inner_radius, col_outer_radius, col_height, cross_section_area, d_rad, eps_c, eps_p, kf, Rp, Rc, Dp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, polyDegPore, RadialConvDispOpInstance, PoreOpInstance, bindStride, adsStride, unitStride, idx, idx_p, idx_q, Fc, Fp, Fjac, Jr, invRi, cpp, RHS_q, qq, solution_outlet, solution_times, bind)
+		new(nComp, col_inner_radius, col_outer_radius, col_height, cross_section_area, d_rad, eps_c, eps_p, kf, Rp, Rc, Dp, c0, cp0, q0, cIn, exactInt, polyDeg, nCells, polyDegPore, RadialConvDispOpInstance, PoreOpInstance, bindStride, adsStride, unitStride, idx, idx_p, idx_q, Fc, Fp, Fjac, Jr, invRi, cpp, RHS_q, qq, film_vec, solution_outlet, solution_times, bind)
 	end
 end
 
@@ -574,76 +584,79 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rGRM, t, section, sink, switc
 	# Determining inlet velocity if specified dynamically
 	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
 	
+	# Precompute face velocities once per call (same for all components)
+	faces_v = RadialConvDispOperatorDG.compute_faces_v(switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],m.RadialConvDispOpInstance.rho_i,m.RadialConvDispOpInstance.rho_ip1,m.col_inner_radius,m.RadialConvDispOpInstance.nCells)
+
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
+	# Convection Dispersion term	
+	cpp_block = @view x[1 + idx_units[sink] : idx_units[sink] + m.RadialConvDispOpInstance.nPoints * m.nComp]
 	@inbounds for j = 1:m.nComp
+		# local “in-block” indices for component j
+		idx_bulk = (1 + (j-1)*m.RadialConvDispOpInstance.nPoints) : (j*m.RadialConvDispOpInstance.nPoints)
+		idx_bulk_abs = idx_bulk .+ idx_units[sink]
 
-		#Indices
-		m.idx =  1 + (j-1) * m.RadialConvDispOpInstance.nPoints : m.RadialConvDispOpInstance.nPoints + (j-1) * m.RadialConvDispOpInstance.nPoints
-		
-		# Determining inlet concentration 
-		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j]) 
+		# inlet concentration (unchanged)
+		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j])
+		# per-component diffusion scales
+		D_left, D_right = RadialConvDispOperatorDG.diff_at_faces(m.d_rad[j], m.RadialConvDispOpInstance.rho_i, m.RadialConvDispOpInstance.rho_ip1)
+		left_scale_vec  = @. m.RadialConvDispOpInstance.rho_i  * D_left
+		right_scale_vec = @. m.RadialConvDispOpInstance.rho_ip1 * D_right
 
-		
-		# Convection Dispersion term	
-		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.RadialConvDispOpInstance.nPoints * m.nComp] # mobile phase
-	# Disable DG-internal film term by setting kf=Inf, but pass correct Rp for consistency
-	RadialConvDispOperatorDG.radialresidualImpl!(
-		m.RadialConvDispOpInstance.Dc,
-		cpp, m.idx,
-		m.RadialConvDispOpInstance.strideNode,
-		m.RadialConvDispOpInstance.strideCell,
-		m.RadialConvDispOpInstance.nPoints,
-		m.RadialConvDispOpInstance.nNodes,
-		m.nCells,
-		m.RadialConvDispOpInstance.deltarho,
-		m.polyDeg,
-		m.RadialConvDispOpInstance.invWeights,
-		m.RadialConvDispOpInstance.nodes,
-		m.RadialConvDispOpInstance.polyDerM,
-		m.RadialConvDispOpInstance.invMM,
-		m.RadialConvDispOpInstance.invMrhoM,
-		m.RadialConvDispOpInstance.SgMatrix,
-		m.RadialConvDispOpInstance.MKMatrix,
-		switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
-		m.d_rad[j],
-		m.cIn[j],
-		m.RadialConvDispOpInstance.c_star,
-		m.RadialConvDispOpInstance.g_star,
-		m.RadialConvDispOpInstance.Dg,
-		m.RadialConvDispOpInstance.h,
-		m.RadialConvDispOpInstance.mul1,
-		m.exactInt,
-		m.Rp,
-		m.kf[j],
-		cpp,
-		:do_nothing, 0.0,
-		m.RadialConvDispOpInstance.rho_i,
-		m.RadialConvDispOpInstance.rho_ip1,
-		m.RadialConvDispOpInstance.col_inner_radius,
-		m.RadialConvDispOpInstance.faces_v,
-    	m.RadialConvDispOpInstance.left_scale_vec,
-    	m.RadialConvDispOpInstance.right_scale_vec
-	)
+		# transport residual for mobile phase of comp j
+		RadialConvDispOperatorDG.radialresidualImpl!(
+			m.RadialConvDispOpInstance.Dc,
+			cpp_block, idx_bulk,
+			m.RadialConvDispOpInstance.strideNode,
+			m.RadialConvDispOpInstance.strideCell,
+			m.RadialConvDispOpInstance.nNodes,
+			m.RadialConvDispOpInstance.nCells,
+			m.RadialConvDispOpInstance.deltarho,
+			m.polyDeg,
+			m.RadialConvDispOpInstance.invWeights,
+			m.RadialConvDispOpInstance.nodes,
+			m.RadialConvDispOpInstance.polyDerM,
+			m.RadialConvDispOpInstance.invMM,
+			m.RadialConvDispOpInstance.MM,
+			m.RadialConvDispOpInstance.invMrhoM,
+			m.RadialConvDispOpInstance.SgMatrix,
+			switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
+			m.d_rad[j],
+			m.cIn[j],
+			m.RadialConvDispOpInstance.c_star,
+			m.RadialConvDispOpInstance.g_star,
+			m.RadialConvDispOpInstance.Dg,
+			m.RadialConvDispOpInstance.h,
+			m.RadialConvDispOpInstance.mul1,
+			m.exactInt, :neumann0, 0.0,
+			m.RadialConvDispOpInstance.rho_i,
+			m.RadialConvDispOpInstance.rho_ip1,
+			faces_v, left_scale_vec,
+			right_scale_vec
+			)
 
-
-		#Surface flux to the particles 
-		# idx_p is a step range 
-		m.idx_p = m.nComp*m.RadialConvDispOpInstance.nPoints + (j-1) * m.PoreOpInstance.nNodesPore * m.RadialConvDispOpInstance.nPoints + m.PoreOpInstance.nNodesPore + idx_units[sink] : m.PoreOpInstance.nNodesPore : m.nComp*m.RadialConvDispOpInstance.nPoints + (j-1) * m.PoreOpInstance.nNodesPore * m.RadialConvDispOpInstance.nPoints + m.PoreOpInstance.nNodesPore * m.RadialConvDispOpInstance.nPoints + idx_units[sink]
-		m.idx = m.idx .+ idx_units[sink]
-
-		# Mobile phase (explicit film exchange term only in RHS)
-		@. @views RHS[m.idx] = m.RadialConvDispOpInstance.Dc - m.Fc * 3 / m.Rp * m.kf[j] * (x[m.idx] - x[m.idx_p])
+			# Film exchange uses the pore concentration at the particle surface (outer pore node)
+			# Build cp_surf indices for the j-th component at each bulk radial point
+			let Np = m.PoreOpInstance.nNodesPore
+				# base offset to the beginning of j-th component pore block (absolute indices)
+				base_pore_j = idx_units[sink] + m.nComp * m.RadialConvDispOpInstance.nPoints + (j-1) * (Np * m.RadialConvDispOpInstance.nPoints)
+				@inbounds for i in 1:m.RadialConvDispOpInstance.nPoints
+					# bulk index for i-th radial point (absolute)
+					idx_c_i = idx_bulk_abs[i]
+					# pore surface node is the last node within the pore slice of size Np
+					idx_cp_surf_i = base_pore_j + (i-1) * Np + Np
+					m.film_vec[i] = m.kf[j] * (x[idx_c_i] - x[idx_cp_surf_i])
+				end
+			end
+		@. @views RHS[idx_bulk_abs] = m.RadialConvDispOpInstance.Dc - m.Fc * 3 / m.Rp * m.film_vec
 
 		# Pore phase - Each idx has _nPolyPore number of states Adding the boundary flux
 		# The boundary flux term is computed as kf(x-x*) 
-		# The whole term is L (M^-1) (2/deltarho) Rp^2/eps_p * kf (x-x*)
-		@. @views m.PoreOpInstance.boundaryPore =  m.kf[j] * (x[m.idx] - x[m.idx_p])
-
+		# The whole term is L (M^-1) (2/deltarho) Rp^2/eps_p * film_vec
+		@. @views m.PoreOpInstance.boundaryPore = m.film_vec
 
 		#Now the rest is computed
 		#dcp/dt = 4/Rp Dp Dr/ri cp - (2/Rp)^2 Dp M^-1 A cp + 2/Rp Dp L[0,J/eps/Dp]  - Fp dq/dt
 		@inbounds for i in 1:m.RadialConvDispOpInstance.nPoints
-
 			#Pore phase for each component starts after all mobile phases
 			#through all mobile phase, through pore phase j, at porephase i
 			m.idx = 1 + m.nComp*m.RadialConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.RadialConvDispOpInstance.nPoints + (i-1) * m.PoreOpInstance.nNodesPore + idx_units[sink] : m.PoreOpInstance.nNodesPore + m.nComp*m.RadialConvDispOpInstance.nPoints + (j-1) *m.PoreOpInstance.nNodesPore*m.RadialConvDispOpInstance.nPoints  + (i-1) * m.PoreOpInstance.nNodesPore + idx_units[sink]
@@ -660,9 +673,7 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rGRM, t, section, sink, switc
 
 			#Assembling RHS
 			@. @views RHS[m.idx] += - m.PoreOpInstance.term1 - m.Fp * RHS_q[m.idx_q]
-
 		end
-
 	end
 	
 	nothing
