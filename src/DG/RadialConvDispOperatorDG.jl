@@ -1,36 +1,11 @@
 module RadialConvDispOperatorDG
     using LinearAlgebra
     using CADETJulia: DGElements
-    # Governing PDE:
-    #   ∂c/∂t = -(v/ρ) ∂c/∂ρ + (1/ρ) ∂/∂ρ ( ρ D_rad ∂c/∂ρ ) 
-    #
-    # Mapping each cell (ρ_i, ρ_{i+1}) → ξ ∈ (-1,1) with ρ(ξ)=ρ_i + (ξ+1)Δρ_i/2 and introducing the auxiliary g := (2/Δρ_i) ∂c/∂ξ
-    # The semi-discrete system (elementwise):
-    #
-    #   ċ = (2/Δρ_i) M_ρ^{-1} [ Sᵀ (v c) - S_g g - ( B (v c*) - B_g g* ) ]
-    #   g  = (2/Δρ_i) [ M^{-1} B (c* - c) - D c ]
-    #
-    # where
-    #   M_ρ   = (Δρ_i/2) M^(0,1) + ρ_i M^(0,0)        (ρ-weighted mass matrix),
-    #   M     = M^(0,0)                               (mass matrix),
-    #   Sᵀ    = Dᵀ M                                  (SBP identity),
-    #   S_g   ≔ ρ D_rad-weighted stiffness
-    #   B, B_g lift numerical face fluxes
-    #   c*, g* are numerical traces
 
     abstract type ExactInt end
-    # A tag type selecting exact integration on surfaces (“exact LGL”).
     struct exact_integration <: ExactInt end
-    #   y[idx]      nodal c in current radial component block
-    #   Dg          workspace for auxiliary g ≈ (2/Δρ) ∂c/∂ξ after lifting
-    #   invMrhoM    per-cell M_ρ^{-1}
-    #   SgMatrix    ρ D_rad stiffness
-    #   v           scalar v or function r ↦ v(r)
-    #   d_rad       scalar D_rad or function r ↦ D_rad(r)
-    #   c_star,g_star  face traces (c*, g*)
-    #   outlet_bc   :neumann0 → g*|_right=0 (zero gradient), :dirichlet → c*|_right=const
 
-    # --- Precompute face velocities ---
+
     @inline function compute_faces_v(v_in::Number, rho_i::Vector{Float64}, rho_ip1::Vector{Float64}, rho_inner::Float64, nCells::Int)
         faces_v = Vector{Float64}(undef, nCells + 1)
         # v(r) = v_in * (rho_inner / r)
@@ -63,13 +38,12 @@ module RadialConvDispOperatorDG
         return d_rad.(rho_i), d_rad.(rho_ip1)
     end
 
-    # --- Outlet BC  ---
     @inline apply_outlet!(c_star, g_star, ::Val{:neumann0}, outlet_value, nCells) = (g_star[nCells+1] = 0.0)
     @inline apply_outlet!(c_star, g_star, ::Val{:dirichlet}, outlet_value, nCells) = (c_star[nCells+1] = outlet_value)
-    # Fallback: do nothing
+
     @inline apply_outlet!(c_star, g_star, ::Val{:do_nothing}, outlet_value, nCells) = nothing
 
-    @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _invWeights, _nodes::Vector{Float64}, _polyDerM, _invMM, _MM, invMrhoM::Vector{<:AbstractMatrix}, SgMatrix::Vector{<:AbstractMatrix}, v, d_rad, cIn, c_star, g_star, Dg, _h, mul1, _exactInt, outlet_bc::Symbol, outlet_value::Float64, rho_i::Vector{Float64}, rho_ip1::Vector{Float64}, faces_v::Union{Nothing,Vector{Float64}}, left_scale_vec::Union{Nothing,Vector{Float64}}, right_scale_vec::Union{Nothing,Vector{Float64}})
+    @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _invWeights, _nodes::Vector{Float64}, _polyDerM, _invMM, _MM, invMrhoM::Vector{<:AbstractMatrix}, SgMatrix::Union{Nothing,Vector{<:AbstractMatrix}}, v, d_rad, cIn, c_star, g_star, Dg, _h, mul1, _exactInt, outlet_bc::Symbol, outlet_value::Float64, rho_i::Vector{Float64}, rho_ip1::Vector{Float64}, faces_v::Union{Nothing,Vector{Float64}}, left_scale_vec::Union{Nothing,Vector{Float64}}, right_scale_vec::Union{Nothing,Vector{Float64}})
         fill!(Dg,0.0)   # reset auxiliary buffer used to build g
         fill!(Dc,0.0)   # reset residual accumulator for mobile phase
         
@@ -81,8 +55,8 @@ module RadialConvDispOperatorDG
         # Step 1) Build strong derivative in ξ: Dg ← D c
         volumeIntegraly!(y,idx, Dg,_nCells,_nNodes,_polyDerM,mul1)
 
-        # Step 2) Numerical fluxes c*: central or upwind based on faces_v sign
-        interfaceFluxAuxiliary!(c_star, y, (idx isa UnitRange ? first(idx) : idx), _strideNode, _strideCell, _nCells; faces_v=faces_v)
+        # Step 2) Numerical fluxes c*: upwind based on faces_v sign
+        interfaceFluxUpwind!(c_star, y, (idx isa UnitRange ? first(idx) : idx), _strideNode, _strideCell, _nCells, faces_v)
         c_star[1] = cIn
 
         # Step 3) Lift face terms into g and scale to physical derivative
@@ -90,7 +64,7 @@ module RadialConvDispOperatorDG
         Dg .*= map
 
         # Step 4) Diffusive face traces g*
-        interfaceFluxAuxiliary!(g_star, Dg, 1, 1, _nNodes, _nCells)
+        interfaceFluxCentral!(g_star, Dg, 1, 1, _nNodes, _nCells)
 
         # Step 5) Outlet BC
         apply_outlet!(c_star, g_star, Val(outlet_bc), outlet_value, _nCells)
@@ -170,28 +144,6 @@ module RadialConvDispOperatorDG
         nothing
     end
 
-    # Unified interfaceFluxAuxiliary! for both advection (c*) and diffusion (g*) traces
-    @inline function interfaceFluxAuxiliary!(_surfaceFlux::Vector{Float64}, SRC, idx_start::Int, strideNode::Int, strideCell::Int, nCells::Int; mode::Symbol=:auto, faces_v::Union{Nothing,Vector{Float64}}=nothing)
-        central = (mode === :central) || (mode === :auto && faces_v === nothing)
-        @inbounds begin
-            @simd for Cell in 2:nCells
-                if central
-                    l = SRC[idx_start + (Cell-1) * strideCell - strideNode]
-                    r = SRC[idx_start + (Cell-1) * strideCell]
-                    _surfaceFlux[Cell] = 0.5 * (l + r)
-                else
-                    vface = faces_v[Cell]
-                    cL = SRC[idx_start + (Cell-1) * strideCell - strideNode]
-                    cR = SRC[idx_start + (Cell-1) * strideCell]
-                    _surfaceFlux[Cell] = (vface >= 0) ? cL : cR
-                end
-            end
-            _surfaceFlux[1] = SRC[idx_start]
-            _surfaceFlux[nCells + 1] = SRC[idx_start + nCells * strideCell - strideNode]
-        end
-        return nothing
-    end
-
     # Lift face fluxes into interiors and accumulate in Dc:
     # Dc += -(2/Δρ) M_ρ^{-1} [ Lift(v c*) + Lift(g* with left/right scaling) ].
     @inline function surfaceIntegral!(Dc, y, idx, _strideNode::Int64, _strideCell::Int64, _nNodes::Int64, _nCells::Int64, _deltarho, _invMM::Matrix{Float64}, invMrhoM::Vector{<:AbstractMatrix}, _polyDeg, _invWeights, _exactInt, c_star, g_star; left_scale::Union{Float64,AbstractVector}, right_scale::Union{Float64,AbstractVector}, faces_v::Vector{Float64}, _h = nothing, tmp = nothing)
@@ -255,5 +207,34 @@ module RadialConvDispOperatorDG
         nothing
     end
 
+        # Always-upwind numerical flux for advection (requires faces_v)
+    @inline function interfaceFluxUpwind!(_surfaceFlux::Vector{Float64}, SRC, idx_start::Int, strideNode::Int, strideCell::Int, nCells::Int, faces_v::Vector{Float64})
+        @inbounds begin
+            @simd for Cell in 2:nCells
+                vface = faces_v[Cell]
+                cL = SRC[idx_start + (Cell-1) * strideCell - strideNode]
+                cR = SRC[idx_start + (Cell-1) * strideCell]
+                _surfaceFlux[Cell] = (vface >= 0) ? cL : cR
+            end
+            # copy boundary values
+            _surfaceFlux[1] = SRC[idx_start]
+            _surfaceFlux[nCells + 1] = SRC[idx_start + nCells * strideCell - strideNode]
+        end
+        return nothing
+    end
+
+    # Central numerical flux (used for diffusion auxiliary trace g*)
+    @inline function interfaceFluxCentral!(_surfaceFlux::Vector{Float64}, SRC, idx_start::Int, strideNode::Int, strideCell::Int, nCells::Int)
+        @inbounds begin
+            @simd for Cell in 2:nCells
+                l = SRC[idx_start + (Cell-1) * strideCell - strideNode]
+                r = SRC[idx_start + (Cell-1) * strideCell]
+                _surfaceFlux[Cell] = 0.5 * (l + r)
+            end
+            _surfaceFlux[1] = SRC[idx_start]
+            _surfaceFlux[nCells + 1] = SRC[idx_start + nCells * strideCell - strideNode]
+        end
+        return nothing
+    end
 
 end
