@@ -1,11 +1,9 @@
-using CADETJulia
+using Test, CADETJulia
 using .CADETJulia.RadialConvDispOperatorDG
 using LinearAlgebra
-using Test
-using Printf
 
 function run_radial_mms_test(; polyDeg=4, nCells=8, rin=0.01, rout=0.05, v_in=2/60, D=1.0e-4)
-    @info "Running radial DG test" polyDeg nCells rin rout v_in D
+    # @info "Running radial DG test" polyDeg nCells rin rout v_in D
 
     # --- Build operator using the same internals as the solver ---
     Rad = CADETJulia.RadialConvDispOp(polyDeg, nCells, rin, rout; d_rad_const=D)
@@ -73,10 +71,10 @@ function run_radial_mms_test(; polyDeg=4, nCells=8, rin=0.01, rout=0.05, v_in=2/
     den = max(norm(L_exact), 1.0)   # scale to 1 if reference is tiny, to avoid bogus huge rel_err
     rel_err = num / den
     abs_err = maximum(abs.(Dc - L_exact))
-    @info "comparison" abs_err rel_err tol = 1e-2 verdict = (rel_err < 1e-2 ? "PASS" : "FAIL")
+    # @info "comparison" abs_err rel_err tol = 1e-2 verdict = (rel_err < 1e-2 ? "PASS" : "FAIL")
 
     @test rel_err < 1e-2
-    println("Test passed. rel. L2 error = ", rel_err, ", max|err| = ", abs_err)
+    #println("Test passed. rel. L2 error = ", rel_err, ", max|err| = ", abs_err)
     return rel_err
 end
 
@@ -159,33 +157,33 @@ end
 
 # --- p-refinement EOC: vary polynomial degree at fixed mesh ---
 function run_radial_mms_eoc_p(; p_list = 1:7, nCells=8, rin=0.01, rout=0.05, v_in=2/60, D=1.0e-4)
-    println("\nEOC (p-refinement) — MMS for radial DG (nCells=$(nCells))")
+    #println("\nEOC (p-refinement) — MMS for radial DG (nCells=$(nCells))")
     errs = Float64[]; dof_scale = Float64[]  # use (p+1) as resolution metric
-    @printf("%6s  %8s  %12s  %12s\n", "p", "nNodes", "rel_L2_err", "abs_max_err")
-    @printf("%s\n", repeat('-', 46))
+    #@printf("%6s  %8s  %12s  %12s\n", "p", "nNodes", "rel_L2_err", "abs_max_err")
+    #@printf("%s\n", repeat('-', 46))
     for p in p_list
         rel, ab = _radial_mms_error(p, nCells; rin=rin, rout=rout, v_in=v_in, D=D)
         push!(errs, rel); push!(dof_scale, p+1)
-        @printf("%6d  %8d  %12.4e  %12.4e\n", p, (p+1)*nCells, rel, ab)
+        #@printf("%6d  %8d  %12.4e  %12.4e\n", p, (p+1)*nCells, rel, ab)
     end
     slope = _loglog_slope(dof_scale, errs)
-    @printf("Estimated slope on log(err) vs log(p+1): %.3f\n", slope)
+    #@printf("Estimated slope on log(err) vs log(p+1): %.3f\n", slope)
     return (; p_list = collect(p_list), errs, slope)
 end
 
 # --- h-refinement EOC: vary nCells at fixed polynomial degree ---
 function run_radial_mms_eoc_h(; nCells_list = [4, 6, 8, 12, 16, 24], polyDeg=4, rin=0.01, rout=0.05, v_in=2/60, D=1.0e-4)
-    println("\nEOC (h-refinement) — MMS for radial DG (polyDeg=$(polyDeg))")
+    #println("\nEOC (h-refinement) — MMS for radial DG (polyDeg=$(polyDeg))")
     errs = Float64[]; hvals = Float64[]  # characteristic cell size Δr
-    @printf("%8s  %8s  %12s  %12s\n", "nCells", "(p+1)N", "rel_L2_err", "abs_max_err")
-    @printf("%s\n", repeat('-', 48))
+    #@printf("%8s  %8s  %12s  %12s\n", "nCells", "(p+1)N", "rel_L2_err", "abs_max_err")
+    #@printf("%s\n", repeat('-', 48))
     for nc in nCells_list
         rel, ab = _radial_mms_error(polyDeg, nc; rin=rin, rout=rout, v_in=v_in, D=D)
         push!(errs, rel); push!(hvals, (rout-rin)/nc)
-        @printf("%8d  %8d  %12.4e  %12.4e\n", nc, (polyDeg+1)*nc, rel, ab)
+        #@printf("%8d  %8d  %12.4e  %12.4e\n", nc, (polyDeg+1)*nc, rel, ab)
     end
     slope = _loglog_slope(1.0 ./ hvals, errs)  # slope wrt resolution ~ 1/h
-    @printf("Estimated slope on log(err) vs log(1/h): %.3f\n", slope)
+    #@printf("Estimated slope on log(err) vs log(1/h): %.3f\n", slope)
     return (; nCells_list = collect(nCells_list), errs, slope)
 end
 
