@@ -6,48 +6,11 @@ module RadialConvDispOperatorDG
     struct exact_integration <: ExactInt end
 
 
-    @inline function compute_faces_v(v_in::Number, rho_i::Vector{Float64}, rho_ip1::Vector{Float64}, rho_inner::Float64, nCells::Int)
-        faces_v = Vector{Float64}(undef, nCells + 1)
-        # v(r) = v_in * (rho_inner / r)
-        faces_v[1] = v_in * (rho_inner / rho_inner)
-        @inbounds for cell in 2:nCells
-            faces_v[cell] = v_in * (rho_inner / rho_i[cell])
-        end
-        faces_v[nCells + 1] = v_in * (rho_inner / rho_ip1[nCells])
-        return faces_v
-    end
-
-    @inline function compute_faces_v(v::Function, rho_i::Vector{Float64}, rho_ip1::Vector{Float64}, rho_inner::Float64, nCells::Int)
-        faces_v = Vector{Float64}(undef, nCells + 1)
-        faces_v[1] = v(rho_inner)
-        @inbounds for cell in 2:nCells
-            faces_v[cell] = v(rho_i[cell])
-        end
-        faces_v[nCells + 1] = v(rho_ip1[nCells])
-        return faces_v
-    end
-
-    # --- Precompute D at faces ---
-    @inline function diff_at_faces(d_rad::Number, rho_i::Vector{Float64}, rho_ip1::Vector{Float64})
-        D_left  = fill(d_rad, length(rho_i))
-        D_right = fill(d_rad, length(rho_ip1))
-        return D_left, D_right
-    end
-
-    @inline function diff_at_faces(d_rad::Function, rho_i::Vector{Float64}, rho_ip1::Vector{Float64})
-        return d_rad.(rho_i), d_rad.(rho_ip1)
-    end
-
-    @inline apply_outlet!(c_star, g_star, ::Val{:neumann0}, outlet_value, nCells) = (g_star[nCells+1] = 0.0)
-    @inline apply_outlet!(c_star, g_star, ::Val{:dirichlet}, outlet_value, nCells) = (c_star[nCells+1] = outlet_value)
-
-    @inline apply_outlet!(c_star, g_star, ::Val{:do_nothing}, outlet_value, nCells) = nothing
-
-    @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _invWeights, _nodes::Vector{Float64}, _polyDerM, _invMM, _MM, invMrhoM::Vector{<:AbstractMatrix}, SgMatrix::Union{Nothing,Vector{<:AbstractMatrix}}, v, d_rad, cIn, c_star, g_star, Dg, _h, mul1, _exactInt, outlet_bc::Symbol, outlet_value::Float64, rho_i::Vector{Float64}, rho_ip1::Vector{Float64}, faces_v::Union{Nothing,Vector{Float64}}, left_scale_vec::Union{Nothing,Vector{Float64}}, right_scale_vec::Union{Nothing,Vector{Float64}})
+    @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _invWeights, _nodes::Vector{Float64}, _polyDerM, _invMM, _MM, invMrhoM::Vector{<:AbstractMatrix}, SgMatrix::Union{Nothing,Vector{<:AbstractMatrix}}, v, d_rad, cIn, c_star, g_star, Dg, _h, mul1, _exactInt, rho_i::Vector{Float64}, rho_ip1::Vector{Float64}, faces_v::Union{Nothing,Vector{Float64}}, left_scale_vec::Union{Nothing,Vector{Float64}}, right_scale_vec::Union{Nothing,Vector{Float64}})
         fill!(Dg,0.0)   # reset auxiliary buffer used to build g
         fill!(Dc,0.0)   # reset residual accumulator for mobile phase
         
-        # --- Function barriers / constants ---
+        # Function barriers / constants
         rho_inner = rho_i[1]
         map = 2.0 / _deltarho
         # fill!(_h,0.0)
@@ -67,11 +30,11 @@ module RadialConvDispOperatorDG
         interfaceFluxCentral!(g_star, Dg, 1, 1, _nNodes, _nCells)
 
         # Step 5) Outlet BC
-        apply_outlet!(c_star, g_star, Val(outlet_bc), outlet_value, _nCells)
+        apply_outlet!(c_star, g_star, Val(:neumann0), 0.0, _nCells)
 
-        # --- Surface term: -(2/Δρ) M_ρ^{-1} [ Lift(v c*) + Lift(g*) ] ---
+        # Surface term: -(2/Δρ) M_ρ^{-1} [ Lift(v c*) + Lift(g*) ]
         surfaceIntegral!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _invMM, invMrhoM, _polyDeg, _invWeights, _exactInt, c_star, g_star; left_scale = left_scale_vec, right_scale = right_scale_vec, _h = _h, tmp = mul1, faces_v = faces_v)
-        # --- Volume term: (2/Δρ) M_ρ^{-1} [ Sᵀ (v c) - S_g g ] ---
+        # Volume term: (2/Δρ) M_ρ^{-1} [ Sᵀ (v c) - S_g g ]
         volumeIntegral!(Dc, y, idx, _nCells, _nNodes, _deltarho, _nodes, _polyDeg, _polyDerM, _invMM, _MM, invMrhoM, SgMatrix, v, Dg, d_rad, rho_inner, _h, mul1)
 
         nothing
@@ -145,7 +108,7 @@ module RadialConvDispOperatorDG
     end
 
     # Lift face fluxes into interiors and accumulate in Dc:
-    # Dc += -(2/Δρ) M_ρ^{-1} [ Lift(v c*) + Lift(g* with left/right scaling) ].
+    # Dc += -(2/Δρ) M_ρ^{-1} [ Lift(v c*) + Lift(g*) ]
     @inline function surfaceIntegral!(Dc, y, idx, _strideNode::Int64, _strideCell::Int64, _nNodes::Int64, _nCells::Int64, _deltarho, _invMM::Matrix{Float64}, invMrhoM::Vector{<:AbstractMatrix}, _polyDeg, _invWeights, _exactInt, c_star, g_star; left_scale::Union{Float64,AbstractVector}, right_scale::Union{Float64,AbstractVector}, faces_v::Vector{Float64}, _h = nothing, tmp = nothing)
         if _h === nothing
             _h = similar(Dc)
@@ -193,7 +156,6 @@ module RadialConvDispOperatorDG
     end
 
     # Exact-integration lifting of surface contributions
-    # uses inverse-mass first/last columns to spread face fluxes to all nodes.
     @inline function surfaceIntegraly!(stateDer,state,idx, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg,_invWeights,_exactInt::exact_integration; left_scale=1.0, right_scale=1.0)
         for Cell in 1:_nCells
             lscale = (left_scale isa AbstractVector)  ? left_scale[Cell]  : left_scale
@@ -207,7 +169,7 @@ module RadialConvDispOperatorDG
         nothing
     end
 
-        # Always-upwind numerical flux for advection (requires faces_v)
+    # Always-upwind numerical flux for advection (requires faces_v)
     @inline function interfaceFluxUpwind!(_surfaceFlux::Vector{Float64}, SRC, idx_start::Int, strideNode::Int, strideCell::Int, nCells::Int, faces_v::Vector{Float64})
         @inbounds begin
             @simd for Cell in 2:nCells
@@ -223,7 +185,7 @@ module RadialConvDispOperatorDG
         return nothing
     end
 
-    # Central numerical flux (used for diffusion auxiliary trace g*)
+    # Central numerical flux (diffusion auxiliary trace g*)
     @inline function interfaceFluxCentral!(_surfaceFlux::Vector{Float64}, SRC, idx_start::Int, strideNode::Int, strideCell::Int, nCells::Int)
         @inbounds begin
             @simd for Cell in 2:nCells
@@ -236,5 +198,49 @@ module RadialConvDispOperatorDG
         end
         return nothing
     end
+    
+    @inline function compute_faces_v(v_in::Number, rho_i::Vector{Float64}, rho_ip1::Vector{Float64}, rho_inner::Float64, nCells::Int)
+        faces_v = Vector{Float64}(undef, nCells + 1)
+        faces_v[1] = v_in * (rho_inner / rho_inner)
+        @inbounds for cell in 2:nCells
+            faces_v[cell] = v_in * (rho_inner / rho_i[cell])
+        end
+        faces_v[nCells + 1] = v_in * (rho_inner / rho_ip1[nCells])
+        return faces_v
+    end
+
+#    @inline function compute_faces_v(v::Function, rho_i::Vector{Float64}, rho_ip1::Vector{Float64}, rho_inner::Float64, nCells::Int)
+#        faces_v = Vector{Float64}(undef, nCells + 1)
+#        faces_v[1] = v(rho_inner)
+#        @inbounds for cell in 2:nCells
+#            faces_v[cell] = v(rho_i[cell])
+#        end
+#        faces_v[nCells + 1] = v(rho_ip1[nCells])
+#        return faces_v
+#    end
+
+    #Precompute D at faces
+    @inline function diff_at_faces(d_rad::Number, rho_i::Vector{Float64}, rho_ip1::Vector{Float64})
+        D_left  = fill(d_rad, length(rho_i))
+        D_right = fill(d_rad, length(rho_ip1))
+        return D_left, D_right
+    end
+
+    @inline function diff_at_faces(d_rad::Function, rho_i::Vector{Float64}, rho_ip1::Vector{Float64})
+        return d_rad.(rho_i), d_rad.(rho_ip1)
+    end
+
+    @inline function film_mass_matrix(_nodes::Vector{Float64}, _polyDeg::Int, rho0::Float64, _deltarho::Float64, kf_val)
+        if kf_val isa Function
+            return DGElements.weightedQuadrature(_nodes, rho0, _deltarho, rho -> rho * kf_val(rho))
+        else
+            return DGElements.weightedQuadrature(_nodes, rho0, _deltarho, rho -> rho * kf_val)
+        end
+    end
+
+    @inline apply_outlet!(c_star, g_star, ::Val{:neumann0}, outlet_value, nCells) = (g_star[nCells+1] = 0.0)
+    @inline apply_outlet!(c_star, g_star, ::Val{:dirichlet}, outlet_value, nCells) = (c_star[nCells+1] = outlet_value)
+
+    @inline apply_outlet!(c_star, g_star, ::Val{:do_nothing}, outlet_value, nCells) = nothing
 
 end
