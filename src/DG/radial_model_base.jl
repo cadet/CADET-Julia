@@ -26,6 +26,7 @@ mutable struct RadialConvDispOp
 	Dc::Vector{Float64}
     Dg::Vector{Float64}
     h::Vector{Float64}
+    Mr_mass_r::Vector{Matrix{Float64}}
 
 	function RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius; d_rad_const::Union{Nothing,Float64}=nothing)
 
@@ -47,17 +48,14 @@ mutable struct RadialConvDispOp
 		invMM = DGElements.invMMatrix(nodes, polyDeg) #Inverse mass matrix
 		MM = DGElements.MMatrix(nodes, polyDeg)
 		polyDerM = DGElements.derivativeMatrix(polyDeg, nodes) #derivative matrix
-		# Build per-cell inverse rho-weighted mass matrices
 		invMrhoM = [
 			DGElements.invMrhoMatrix(nodes, polyDeg, deltarho, col_inner_radius + (cell-1)*deltarho)
 		    for cell in 1:nCells
 		]
-		# build dispersion stiffness per cell if a constant D_rad is provided
+
 		if d_rad_const === nothing
-			# no prebuilt SgMatrix if not constant
 			SgMatrix = nothing
 		else
-			# build per-cell S_g = D'^ * M_{\hat{\rho} D_rad} with constant D_rad
 			SgMatrix = [
 				DGElements.weighted_stiff_Matrix(nodes, polyDeg, col_inner_radius + (cell-1)*deltarho, deltarho, _ -> d_rad_const)
 				for cell in 1:nCells
@@ -72,7 +70,13 @@ mutable struct RadialConvDispOp
 		Dg = zeros(Float64, nPoints)
 		h = zeros(Float64, nPoints)
 
-		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, invWeights, invMM, MM, polyDerM, invMrhoM, SgMatrix, deltarho, rho_i, rho_ip1, mul1, c_star, g_star, Dc, Dg, h)
+        # Cache per-cell weighted mass for w(r)=ρ. Later we scale by k_f if constant.
+        Mr_mass_r = [
+            DGElements.weightedQuadrature(nodes, col_inner_radius + (cell-1)*deltarho, deltarho, r -> r)
+            for cell in 1:nCells
+        ]
+
+		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, invWeights, invMM, MM, polyDerM, invMrhoM, SgMatrix, deltarho, rho_i, rho_ip1, mul1, c_star, g_star, Dc, Dg, h, Mr_mass_r)
 	end
 end
 
@@ -187,13 +191,8 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
     
 	# Precompute face velocities once per call (same for all components)
-	faces_v = RadialConvDispOperatorDG.compute_faces_v(
-		switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
-		m.RadialConvDispOpInstance.rho_i,
-		m.RadialConvDispOpInstance.rho_ip1,
-		m.col_inner_radius,
-		m.RadialConvDispOpInstance.nCells
-	)
+	faces_v = RadialConvDispOperatorDG.compute_faces_v(switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.RadialConvDispOpInstance.rho_i, m.RadialConvDispOpInstance.rho_ip1, m.col_inner_radius, m.RadialConvDispOpInstance.nCells)
+	
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
 		# Indices
@@ -237,7 +236,6 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 			m.RadialConvDispOpInstance.h,
 			m.RadialConvDispOpInstance.mul1,
 			m.exactInt,
-			:neumann0, 0.0,
 			m.RadialConvDispOpInstance.rho_i,
 			m.RadialConvDispOpInstance.rho_ip1,
 			faces_v,
@@ -366,13 +364,7 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRMP, t, section, sink, swit
 	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
 	
 	# Precompute face velocities once per call (same for all components)
-	faces_v = RadialConvDispOperatorDG.compute_faces_v(
-		switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink],
-		m.RadialConvDispOpInstance.rho_i,
-		m.RadialConvDispOpInstance.rho_ip1,
-		m.col_inner_radius,
-		m.RadialConvDispOpInstance.nCells
-	)
+	faces_v = RadialConvDispOperatorDG.compute_faces_v(switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.RadialConvDispOpInstance.rho_i, m.RadialConvDispOpInstance.rho_ip1, m.col_inner_radius, m.RadialConvDispOpInstance.nCells)
 
 	# Loop over components where convection dispersion term is determined and the isotherm term is subtracted
 	@inbounds for j = 1:m.nComp
@@ -417,7 +409,6 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRMP, t, section, sink, swit
 			m.RadialConvDispOpInstance.h,
 			m.RadialConvDispOpInstance.mul1,
 			m.exactInt,
-			:neumann0, 0.0,
 			m.RadialConvDispOpInstance.rho_i,
 			m.RadialConvDispOpInstance.rho_ip1,
 			faces_v,
@@ -425,14 +416,54 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRMP, t, section, sink, swit
 			right_scale_vec
 		)
 
-		# Compute film exchange vector
-		@. @views m.film_vec = m.kf[j] * (x[m.idx .+ idx_units[sink]] - x[m.idx_p .+ idx_units[sink]])
+        # Matrix-weighted film transfer using M_rho^{-1} M_K (see derivation eqs. (14a), (17a))
+        let nN = m.RadialConvDispOpInstance.nNodes,
+            nC = m.RadialConvDispOpInstance.nCells,
+            nodes = m.RadialConvDispOpInstance.nodes,
+            invMrhoM = m.RadialConvDispOpInstance.invMrhoM,
+            deltarho = m.RadialConvDispOpInstance.deltarho,
+            rho_i_vec = m.RadialConvDispOpInstance.rho_i
 
-		# Mobile phase
-		@. @views RHS[m.idx .+ idx_units[sink]] = m.RadialConvDispOpInstance.Dc - m.Fc * 3 / m.Rp * m.film_vec
+            # Temporary work vectors per cell
+            tmp_cell = similar(m.RadialConvDispOpInstance.mul1)
+            diff_cell = similar(m.RadialConvDispOpInstance.mul1)
 
-		# Pore phase dcp/dt = MT/eps_p - Fp dq/dt
-		@. @views RHS[m.idx_p .+ idx_units[sink]] = 3 / (m.Rp * m.eps_p) * m.film_vec - m.Fp * RHS_q[m.idx]
+            for cell in 1:nC
+                # Slices for this component & cell in the big state vector
+                cell_start = m.idx.start + (cell-1)*nN
+                cell_end   = cell_start + nN - 1
+
+                c_cell  = @view x[cell_start + idx_units[sink] : cell_end + idx_units[sink]]
+                cp_cell = @view x[(cell_start + m.RadialConvDispOpInstance.nPoints*m.nComp) + idx_units[sink] : (cell_end   + m.RadialConvDispOpInstance.nPoints*m.nComp) + idx_units[sink]]
+
+                # diff = (c - cp)
+                @. diff_cell = c_cell - cp_cell
+
+                kf_val = m.kf[j]
+                if !(kf_val isa Function)
+                    # Reuse cached M_r (weight = ρ) and scale by constant k_f
+                    MK_r = m.RadialConvDispOpInstance.Mr_mass_r[cell]
+                    mul!(tmp_cell, MK_r, diff_cell)
+                    @. tmp_cell = kf_val * tmp_cell
+                else
+                    # Fallback: build full M_K with ρ * k_f(r)
+                    MK_full = RadialConvDispOperatorDG.film_mass_matrix(nodes, m.RadialConvDispOpInstance.nNodes,
+                                                                        rho_i_vec[cell], deltarho, kf_val)
+                    mul!(tmp_cell, MK_full, diff_cell)
+                end
+                # tmp_cell = M_rho^{-1} * tmp_cell
+                mul!(tmp_cell, invMrhoM[cell], tmp_cell)
+
+                # Coefficients
+                bulk_coeff = m.Fc * 3.0 / m.Rp                 # (1-ε_c)/ε_c * 3/Rp
+                pore_coeff = 3.0 / (m.Rp * m.eps_p)            # 3/(Rp ε_p)
+
+                # Accumulate into RHS: bulk -= bulk_coeff * tmp; pore += pore_coeff * tmp
+                @views @. RHS[cell_start + idx_units[sink] : cell_end + idx_units[sink]] = m.RadialConvDispOpInstance.Dc[cell_start - m.idx.start + 1 : cell_end - m.idx.start + 1] - bulk_coeff * tmp_cell
+
+                @views @. RHS[(cell_start + m.RadialConvDispOpInstance.nPoints*m.nComp) + idx_units[sink] : (cell_end   + m.RadialConvDispOpInstance.nPoints*m.nComp) + idx_units[sink]] = pore_coeff * tmp_cell - m.Fp * RHS_q[m.idx][cell_start - m.idx.start + 1 : cell_end - m.idx.start + 1]
+            end
+        end
 	end
 	
 	nothing
@@ -628,7 +659,6 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rGRM, t, section, sink, switc
 			m.RadialConvDispOpInstance.h,
 			m.RadialConvDispOpInstance.mul1,
 			m.exactInt,
-			:neumann0, 0.0,
 			m.RadialConvDispOpInstance.rho_i,
 			m.RadialConvDispOpInstance.rho_ip1,
 			faces_v, left_scale_vec,
