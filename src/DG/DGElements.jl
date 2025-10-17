@@ -1,7 +1,12 @@
 #Functions used for DG Elements from Jan
 module DGElements
 using SpecialFunctions, LinearAlgebra
+using SpecialFunctions, LinearAlgebra
 
+#LGL nodes and weights
+function lglnodes(N)
+    # Truncation + 1
+    N1 = N + 1
 #LGL nodes and weights
 function lglnodes(N)
     # Truncation + 1
@@ -9,7 +14,11 @@ function lglnodes(N)
 
     # Use the Chebyshev-Gauss-Lobatto nodes as the first guess
     x = cos.(pi .* (0:N) ./ N)
+    # Use the Chebyshev-Gauss-Lobatto nodes as the first guess
+    x = cos.(pi .* (0:N) ./ N)
 
+    # The Legendre Vandermonde Matrix
+    P = zeros(N1, N1)
     # The Legendre Vandermonde Matrix
     P = zeros(N1, N1)
 
@@ -17,20 +26,37 @@ function lglnodes(N)
     # Compute its first and second derivatives and
     # update x using the Newton-Raphson method.
     xold = ones(length(x)) .* 2.0
+    # Compute P_(N) using the recursion relation
+    # Compute its first and second derivatives and
+    # update x using the Newton-Raphson method.
+    xold = ones(length(x)) .* 2.0
 
     while maximum(abs.(x .- xold)) > eps()
         xold[:] = x
+    while maximum(abs.(x .- xold)) > eps()
+        xold[:] = x
 
+        P[:, 1] .= 1
+        P[:, 2] = x
         P[:, 1] .= 1
         P[:, 2] = x
 
         for k = 2:N
             P[:, k + 1] = ((2 * k - 1) .* x .* P[:, k] - (k - 1) .* P[:, k - 1]) ./ k
         end
+        for k = 2:N
+            P[:, k + 1] = ((2 * k - 1) .* x .* P[:, k] - (k - 1) .* P[:, k - 1]) ./ k
+        end
 
         x[:] = xold - (x .* P[:, N1] - P[:, N]) ./ (N1 .* P[:, N1])
     end
+        x[:] = xold - (x .* P[:, N1] - P[:, N]) ./ (N1 .* P[:, N1])
+    end
 
+    w = 2 ./(N .* N1 .* P[:, N1].^2)
+    
+    return reverse(x), 1 ./ w
+end
     w = 2 ./(N .* N1 .* P[:, N1].^2)
     
     return reverse(x), 1 ./ w
@@ -282,7 +308,36 @@ function barycentricWeights(baryWeights,_polyDeg,_nodes)
     end
     return baryWeights
 end
+# computation of barycentric weights for fast polynomial evaluation
+# @param [in] baryWeights vector to store barycentric weights. Must already be initialized with ones!
+function barycentricWeights(baryWeights,_polyDeg,_nodes)
+    for j in 1:_polyDeg
+        for k in 0:j-1
+            baryWeights[k+1] *= (_nodes[k+1] - _nodes[j+1]) * 1.0
+            baryWeights[j+1] *= (_nodes[j+1] - _nodes[k+1]) * 1.0
+        end
+    end
+    for j in 1:_polyDeg+1
+        baryWeights[j] = 1 / baryWeights[j]
+    end
+    return baryWeights
+end
 
+# @brief computation of nodal (lagrange) polynomial derivative matrix
+function derivativeMatrix(_polyDeg,_nodes)
+    baryWeights = ones(_polyDeg + 1)
+    baryWeights = barycentricWeights(baryWeights,_polyDeg,_nodes)
+    _polyDerM = zeros(Float64,_polyDeg+1,_polyDeg+1)
+    for i in 1:_polyDeg+1
+        for j in 1:_polyDeg+1
+            if i != j
+                _polyDerM[i, j] = baryWeights[j] / (baryWeights[i] * (_nodes[i] - _nodes[j]))
+                _polyDerM[i, i] += -_polyDerM[i, j]
+            end
+        end
+    end
+    return _polyDerM
+end
 # @brief computation of nodal (lagrange) polynomial derivative matrix
 function derivativeMatrix(_polyDeg,_nodes)
     baryWeights = ones(_polyDeg + 1)
@@ -307,7 +362,24 @@ function orthonFactor(polyDeg, a = 0.0, b = 0.0)
 
     return sqrt(((2.0 * n + a + b + 1.0) * gamma(n + 1.0) * gamma(n + a + b + 1.0)) / (2.0^(a + b + 1.0) * gamma(n + a + 1.0) * gamma(n + b + 1.0)))
 end
+#  factor to normalize legendre polynomials
+function orthonFactor(polyDeg, a = 0.0, b = 0.0)
+    # a = alpha, b = beta
+    n = polyDeg
 
+    return sqrt(((2.0 * n + a + b + 1.0) * gamma(n + 1.0) * gamma(n + a + b + 1.0)) / (2.0^(a + b + 1.0) * gamma(n + a + 1.0) * gamma(n + b + 1.0)))
+end
+
+# calculates the Vandermonde matrix of the normalized jacobi polynomials
+function jacVandermondeMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
+    
+    V = zeros(Float64, length(_nodes), length(_nodes))
+    
+    # degree 0
+    V[:, 1] .= orthonFactor(0, alpha, beta)
+    
+    # degree 1
+    V[:, 2] .= ((_nodes .- 1) ./ 2 .* (alpha .+ beta .+ 2) .+ (alpha .+  1.0)) .* orthonFactor(1, alpha, beta)
 # calculates the Vandermonde matrix of the normalized jacobi polynomials
 function jacVandermondeMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     
@@ -324,7 +396,20 @@ function jacVandermondeMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
         for node in 1:size(_nodes)[1] #length(_nodes)
             orthn_1 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 1, alpha, beta)
             orthn_2 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 2, alpha, beta)
+    for deg in 2:_polyDeg
+        for node in 1:size(_nodes)[1] #length(_nodes)
+            orthn_1 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 1, alpha, beta)
+            orthn_2 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 2, alpha, beta)
 
+            V[node, deg + 1] = orthn_1 * ((2.0 * deg + alpha + beta - 1.0) * ((2.0 * deg + alpha + beta) * (2.0 * deg + alpha + beta - 2.0) * _nodes[node] + alpha * alpha - beta * beta) * V[node, deg])
+            V[node, deg + 1] -= orthn_2 * (2.0 * (deg + alpha - 1.0) * (deg + beta - 1.0) * (2.0 * deg + alpha + beta) * V[node, deg - 1]) 
+            V[node, deg + 1] /= (2.0 * deg * (deg + alpha + beta) * (2.0 * deg + alpha + beta - 2.0))
+ 
+        end
+    end
+    
+    return V
+end
             V[node, deg + 1] = orthn_1 * ((2.0 * deg + alpha + beta - 1.0) * ((2.0 * deg + alpha + beta) * (2.0 * deg + alpha + beta - 2.0) * _nodes[node] + alpha * alpha - beta * beta) * V[node, deg])
             V[node, deg + 1] -= orthn_2 * (2.0 * (deg + alpha - 1.0) * (deg + beta - 1.0) * (2.0 * deg + alpha + beta) * V[node, deg - 1]) 
             V[node, deg + 1] /= (2.0 * deg * (deg + alpha + beta) * (2.0 * deg + alpha + beta - 2.0))
@@ -345,8 +430,22 @@ function getVandermonde_LEGENDRE(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     
     # degree 1
     V[:, 2] .= _nodes .* orthonFactor(1, alpha, beta)
+# calculates the Vandermonde matrix of the normalized legendre polynomials
+function getVandermonde_LEGENDRE(_nodes,_polyDeg, alpha=0.0, beta=0.0)
+    
+    V = zeros(Float64, length(_nodes), length(_nodes))
+    
+    # degree 0
+    V[:, 1] .= orthonFactor(0, alpha, beta)
+    
+    # degree 1
+    V[:, 2] .= _nodes .* orthonFactor(1, alpha, beta)
 
 
+    for deg in 2:_polyDeg
+        for node in 1:size(_nodes)[1] #length(_nodes)
+            orthn_1 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 1, alpha, beta)
+            orthn_2 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 2, alpha, beta)
     for deg in 2:_polyDeg
         for node in 1:size(_nodes)[1] #length(_nodes)
             orthn_1 = orthonFactor(deg, alpha, beta) / orthonFactor(deg - 1, alpha, beta)
@@ -354,7 +453,15 @@ function getVandermonde_LEGENDRE(_nodes,_polyDeg, alpha=0.0, beta=0.0)
 
             fac_1 = ((2.0 * deg - 1.0) * 2.0 * deg * (2.0 * deg - 2.0) * _nodes[node]) / (2.0 * deg * deg * (2.0 * deg - 2.0))
             fac_2 = (2.0 * (deg - 1.0) * (deg - 1.0) * 2.0 * deg) / (2.0 * deg * deg * (2.0 * deg - 2.0))
+            fac_1 = ((2.0 * deg - 1.0) * 2.0 * deg * (2.0 * deg - 2.0) * _nodes[node]) / (2.0 * deg * deg * (2.0 * deg - 2.0))
+            fac_2 = (2.0 * (deg - 1.0) * (deg - 1.0) * 2.0 * deg) / (2.0 * deg * deg * (2.0 * deg - 2.0))
 
+            V[node, deg + 1] = orthn_1 * fac_1 * V[node, deg] - orthn_2 * fac_2 * V[node, deg - 1]
+        end
+    end
+    
+    return V
+end
             V[node, deg + 1] = orthn_1 * fac_1 * V[node, deg] - orthn_2 * fac_2 * V[node, deg - 1]
         end
     end
@@ -367,101 +474,62 @@ function invMMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     _invMM = jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta) * transpose(jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta))
     return _invMM
 end
+#Inverse mass matrix
+function invMMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
+    _invMM = jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta) * transpose(jacVandermondeMatrix(_nodes,_polyDeg, alpha, beta))
+    return _invMM
+end
 
 # Mass matrix
 function MMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return inv(invMMatrix(_nodes,_polyDeg, alpha, beta))
 end
-
-#Stiffness matrix
-function steifMatrix(_nodes,_polyDeg)
-    #Mass matrix * Derivative matrix
-    _steifMatrix = (getVandermonde_LEGENDRE(_nodes,_polyDeg) * transpose(getVandermonde_LEGENDRE(_nodes,_polyDeg)))^-1 * derivativeMatrix(_polyDeg,_nodes) 
-    return _steifMatrix
+# Mass matrix
+function MMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
+    return inv(invMMatrix(_nodes,_polyDeg, alpha, beta))
 end
+
+# #Stiffness matrix
+# function steifMatrix(_nodes,_polyDeg)
+#     #Mass matrix * Derivative matrix
+#     _steifMatrix = (getVandermonde_LEGENDRE(_nodes,_polyDeg) * transpose(getVandermonde_LEGENDRE(_nodes,_polyDeg)))^-1 * derivativeMatrix(_polyDeg,_nodes) 
+#     return _steifMatrix
+# end
 
 # Second order stiffness matrix
 function second_order_stiff_matrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     #Mass matrix * Derivative matrix
     return Transpose(derivativeMatrix(_polyDeg,_nodes)) * MMatrix(_nodes,_polyDeg, alpha, beta) * derivativeMatrix(_polyDeg,_nodes)
 end
-
-# hatrho Weighted mass matrix and its inverse
-function weightedMMatrix(_nodes,_polyDeg, rho_i::Vector{Float64}, _deltarho::Float64)
-    # Precompute base mass matrices once
-    M00 = MMatrix(_nodes, _polyDeg, 0, 0)
-    M01 = MMatrix(_nodes, _polyDeg, 0, 1)
-
-    # Compute weighted mass matrix and its inverse for each cell
-    nCells = length(rho_i) - 1
-    rMM = Vector{Matrix{Float64}}(undef, nCells)
-    invrMM = Vector{Matrix{Float64}}(undef, nCells)
-
-    for Cell in 1:nCells
-        # M_ρ = ρ_i * M(0,0) + (Δρ/2) * M(0,1)
-        rMM[Cell] = rho_i[Cell] .* M00 .+ (_deltarho/2) .* M01
-        # Precompute inverse
-        invrMM[Cell] = inv(rMM[Cell])
-    end
-
-    return rMM, invrMM
+# Second order stiffness matrix
+function second_order_stiff_matrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
+    #Mass matrix * Derivative matrix
+    return Transpose(derivativeMatrix(_polyDeg,_nodes)) * MMatrix(_nodes,_polyDeg, alpha, beta) * derivativeMatrix(_polyDeg,_nodes)
 end
 
-function dispersionWeightedMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function})
-    nCells = length(rho_i) - 1
-    nNodes = _polyDeg + 1
-    S_g = Vector{Matrix{Float64}}(undef, nCells)
-    quad_nodes, quad_invWeights = lgnodes(_polyDeg)
-    quad_weights = 1.0 ./ quad_invWeights
-    nQuad = length(quad_nodes)
-
-    lagrange_at_quad = zeros(Float64, nNodes, nQuad)
-    for k in 1:nNodes
-        for q in 1:nQuad
-            lagrange_at_quad[k, q] = 1.0
-            for m in 1:nNodes
-                if m != k
-                    lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
-                end
-            end
-        end
+    # Weighted Mass Matrix
+    # M_rho = (Δrho_i/2) * M^{(0,1)} + rho_i * M^(0,0), where hatrho(ξ) = rho_i + (Δrho_i/2)(1+ξ)
+    function MrhoMatrix(_nodes, _polyDeg, _deltarho, rho_i)
+        return (_deltarho/2) * MMatrix(_nodes, _polyDeg, 0.0, 1.0) + rho_i * MMatrix(_nodes, _polyDeg, 0.0, 0.0)
     end
 
-    dlagrange_at_quad = zeros(Float64, nNodes, nQuad)
-    for q in 1:nQuad
-        for j in 1:nNodes
-            sum_terms = 0.0
-            for n in 1:nNodes
-                if n != j
-                    term = 1.0 / (_nodes[j] - _nodes[n])
-                    for p in 1:nNodes
-                        if p != j && p != n
-                            term *= (quad_nodes[q] - _nodes[p]) / (_nodes[j] - _nodes[p])
-                        end
-                    end
-                    sum_terms += term
-                end
-            end
-            dlagrange_at_quad[j, q] = sum_terms
-        end
+    function invMrhoMatrix(_nodes,_polyDeg, _deltarho, rho_i)
+        return inv(MrhoMatrix(_nodes, _polyDeg, _deltarho, rho_i))
     end
 
-    for Cell in 1:nCells
-        S_g[Cell] = zeros(Float64, nNodes, nNodes)
-        jacobian = _deltarho / 2
-
-        for q in 1:nQuad
-            rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
-            d_rad_q = isa(d_rad, Function) ? d_rad(rho_q) : d_rad
-            weight_factor = quad_weights[q] * rho_q * d_rad_q
-            for j in 1:nNodes
-                for k in 1:nNodes
-                    S_g[Cell][j, k] += weight_factor * dlagrange_at_quad[j, q] * lagrange_at_quad[k, q]
-                end
-            end
-        end
+    # Weighted Matrix must accept a vector of physical radii ρ and return a vector of weights of same size
+    function weightedQuadrature(_nodes, rho_i, _deltarho, weight)
+        # Map reference nodes ξ∈[-1,1] to physical radii hatρ = ρ_i + (ξ+1)·Δρ_i/2
+        hatrho = rho_i .+ (_nodes .+ 1) .* (_deltarho/2)
+        # Fetch LGL quadrature weights for the same N and assume ordering equals `nodes`
+        _, invw = lglnodes(length(_nodes) - 1)
+        w = 1.0 ./ invw
+        w_phys = weight(hatrho)
+        return Diagonal(w .* w_phys)
     end
-    return S_g
-end
+
+    function weighted_stiff_Matrix(_nodes, _polyDeg, rho_i, _deltarho, weight)
+        return Transpose(derivativeMatrix(_polyDeg,_nodes)) * weightedQuadrature(_nodes, rho_i, _deltarho, hatrho -> hatrho .* weight.(hatrho))
+    end
 
 end

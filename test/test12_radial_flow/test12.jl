@@ -1,283 +1,118 @@
-using Test, CADETJulia
-using .CADETJulia.RadialConvDispOperatorDG
 using LinearAlgebra
+using Statistics
+using Printf
+using Plots
+using CADETJulia
 
-function run_radial_mms_test(; polyDeg=4, nCells=8, rin=0.01, rout=0.05, v_in=2/60, D=1.0e-4)
-    # @info "Running radial DG test" polyDeg nCells rin rout v_in D
+# --------------------------- utilities ---------------------------------------
+# map DG nodes to physical radius in a cell
+hatrho(nodes, ρi, Δρ) = @. ρi + (nodes + 1) * (Δρ/2)
 
-    # --- Build operator using the same internals as the solver ---
-    Rad = CADETJulia.RadialConvDispOp(polyDeg, nCells, rin, rout; d_rad_const=D)
-    nNodes  = Rad.nNodes
-    nPoints = Rad.nPoints
+# build face velocities for constant volumetric flow (v ∝ 1/r)
+function face_velocities(op; v_in::Float64=1.0, ρ_in::Float64=op.rho_i[1])
+    rv = Vector{Float64}(undef, op.nCells + 1)
+    rv[1] = v_in
+    @inbounds for f in 2:op.nCells
+        rv[f] = v_in * (ρ_in / op.rho_i[f])
+    end
+    rv[op.nCells + 1] = v_in * (ρ_in / op.rho_ip1[op.nCells])
+    return rv
+end
 
-    nodes      = Rad.nodes
-    polyDerM   = Rad.polyDerM
-    invMM      = Rad.invMM
-    MM         = Rad.MM
-    invWeights = Rad.invWeights
-    invMrhoM   = Rad.invMrhoM
-    SgMatrix   = Rad.SgMatrix
-    deltarho   = Rad.deltarho
-    rho_i      = Rad.rho_i
-    rho_ip1    = Rad.rho_ip1
+# build full vector of physical radii at all DG nodes
+function radii_vector(op)
+    r = similar(op.Dc)
+    @inbounds for cell in 1:op.nCells
+        ρnodes = hatrho(op.nodes, op.rho_i[cell], op.deltarho)
+        r[(cell-1)*op.nNodes+1 : cell*op.nNodes] .= ρnodes
+    end
+    return r
+end
 
-    # Face data (ALWAYS upwind for advection), diffusion face scaling = ρ·D
-    faces_v = RadialConvDispOperatorDG.compute_faces_v(v_in, rho_i, rho_ip1, rin, nCells)
-    D_left, D_right = RadialConvDispOperatorDG.diff_at_faces(D, rho_i, rho_ip1)
-    left_scale_vec  = @. rho_i  * D_left
-    right_scale_vec = @. rho_ip1 * D_right
+# ---------------- residual assembly for c(r)=r, convection-only ---------------
+function assemble_residual_c_eq_r(polyDeg::Int, nCells::Int; ρ_in::Float64=1.0, ρ_out::Float64=2.0, v_in::Float64=1.0)
+    op = CADETJulia.RadialConvDispOp(polyDeg, nCells, ρ_in, ρ_out)
 
-    # --- Manufactured polynomial c(r) with ∂c/∂r = 0 at both ends ---
-    A, B = 1.0, 0.0
-    c_fun(r)  = A * (r - rin)^2 * (rout - r)^2 + B
-    dcdr(r)   = 2*A * ((r - rin)*(rout - r)^2 - (r - rin)^2*(rout - r))
-    d2cdr2(r) = 2*A * ((rout - r)^2 - 4*(r - rin)*(rout - r) + (r - rin)^2)
-
-    v_of_r(r) = v_in * (rin / r)
-    # Conservative advection in cylindrical coords: -(1/r)∂(r v c)/∂r.
-    # For RFC v(r)=v_in*rin/r this reduces to -v(r) * dc/dr.
-    Lc(r) = -v_of_r(r) * dcdr(r) + D * (d2cdr2(r) + (1/r) * dcdr(r))
-
-    # --- State on DG nodes ---
-    y = zeros(Float64, nPoints)
-    radii = similar(y)
-    for cell in 1:nCells
-        rL = rin + (cell-1) * deltarho
-        for n in 1:nNodes
-            r = rL + (nodes[n] + 1.0) * (deltarho/2)
-            idx = (cell-1)*nNodes + n
-            radii[idx] = r
-            y[idx] = c_fun(r)
-        end
+    # state y: c(r) = r
+    y = similar(op.Dc); fill!(y, 0.0)
+    @inbounds for cell in 1:op.nCells
+        ρnodes = hatrho(op.nodes, op.rho_i[cell], op.deltarho)
+        y[(cell-1)*op.nNodes+1 : cell*op.nNodes] .= ρnodes
     end
 
-    # --- Apply DG operator ---
-    Dc = zeros(Float64, nPoints)
-    c_star = zeros(Float64, nCells + 1)
-    g_star = zeros(Float64, nCells + 1)
-    Dg = zeros(Float64, nPoints)
-    h = zeros(Float64, nPoints)
-    mul1 = zeros(Float64, nNodes)
+    d_rad = 0.0
+    radial_v = face_velocities(op; v_in=v_in, ρ_in=ρ_in)
+    left_scale_vec  = op.rho_i   .* d_rad
+    right_scale_vec = op.rho_ip1 .* d_rad
 
-    cIn = c_fun(rin)
+    # scratch aliases
+    Dc     = op.Dc;     fill!(Dc, 0.0)
+    c_star = op.c_star
+    g_star = op.g_star
+    Dg     = op.Dg
+    h      = op.h
+    mul1   = op.mul1
+    idx    = 1:op.nPoints
 
-    RadialConvDispOperatorDG.radialresidualImpl!(Dc, y, 1:nPoints, 1, nNodes, nNodes, nCells, deltarho, polyDeg, invWeights, nodes, polyDerM, invMM, MM, invMrhoM, SgMatrix, v_in, D, cIn, c_star, g_star, Dg, h, mul1, RadialConvDispOperatorDG.exact_integration(), rho_i, rho_ip1, faces_v, left_scale_vec, right_scale_vec)
+    cIn = ρ_in
 
-    # Analytic RHS on the same nodes
-    L_exact = @. Lc(radii)
+    CADETJulia.RadialConvDispOperatorDG.radialresidualImpl!(
+        Dc, y, idx,
+        op.strideNode, op.strideCell,
+        op.nNodes, op.nCells, op.deltarho,
+        polyDeg, op.invWeights, op.polyDerM, op.invMM, op.MM00, op.MM01,
+        op.nodes, v_in, d_rad, cIn,
+        c_star, g_star, Dg, h, mul1,
+        op.rho_i, op.rho_ip1,
+        radial_v, left_scale_vec, right_scale_vec,
+    )
 
-    # Robust relative L2 (guard for tiny reference):
-    num = norm(Dc - L_exact)
-    den = max(norm(L_exact), 1.0)   # scale to 1 if reference is tiny, to avoid bogus huge rel_err
-    rel_err = num / den
-    abs_err = maximum(abs.(Dc - L_exact))
-    # @info "comparison" abs_err rel_err tol = 1e-2 verdict = (rel_err < 1e-2 ? "PASS" : "FAIL")
-
-    @test rel_err < 1e-2
-    #println("Test passed. rel. L2 error = ", rel_err, ", max|err| = ", abs_err)
-    return rel_err
+    return op, y, Dc
 end
 
-# Run on include
-run_radial_mms_test()
+# ---------------------------- comparison + plot -------------------------------
+function compare_residual_c_eq_r(polyDeg::Int=3, nCells::Int=16; ρ_in::Float64=1.0, ρ_out::Float64=2.0, v_in::Float64=1.0)
+    op, y, Dc = assemble_residual_c_eq_r(polyDeg, nCells; ρ_in=ρ_in, ρ_out=ρ_out, v_in=v_in)
+    r = radii_vector(op)
 
-# --- Helper: compute MMS error without printing ---
-function _radial_mms_error(polyDeg, nCells; rin=0.01, rout=0.05, v_in=2/60, D=1.0e-4)
-    Rad = CADETJulia.RadialConvDispOp(polyDeg, nCells, rin, rout; d_rad_const=D)
-    nNodes  = Rad.nNodes
-    nPoints = Rad.nPoints
+    # analytic residual: (1/r) d_r (r v c) with v = v_in*ρ_in/r, c=r  ⇒ v_in*ρ_in/r
+    expected = zeros(length(r))
+    err_vec  = Dc .- expected
 
-    nodes      = Rad.nodes
-    polyDerM   = Rad.polyDerM
-    invMM      = Rad.invMM
-    MM         = Rad.MM
-    invWeights = Rad.invWeights
-    invMrhoM   = Rad.invMrhoM
-    SgMatrix   = Rad.SgMatrix
-    deltarho   = Rad.deltarho
-    rho_i      = Rad.rho_i
-    rho_ip1    = Rad.rho_ip1
+    # print diagnostics
+    @printf("\n=== Residual check for c(r)=r (p=%d, nCells=%d) ===\n", polyDeg, nCells)
+    @printf("‖Dc‖∞      = %.6e\n", maximum(abs.(Dc)))
+    @printf("‖expected‖∞= %.6e\n", maximum(abs.(expected)))
+    @printf("‖error‖∞   = %.6e\n", maximum(abs.(err_vec)))
+    @printf("‖error‖₂    = %.6e\n", norm(err_vec))
+    @printf("mean(error)= %.6e\n", mean(err_vec))
+    println("Dc[1:8]       = ", collect(Dc[1:min(end,8)]))
+    println("expected[1:8] = ", collect(expected[1:min(end,8)]))
+    println("error[1:8]    = ", collect(err_vec[1:min(end,8)]))
 
-    # Face data (RFC profile and ρ·D face scaling)
-    faces_v = RadialConvDispOperatorDG.compute_faces_v(v_in, rho_i, rho_ip1, rin, nCells)
-    D_left, D_right = RadialConvDispOperatorDG.diff_at_faces(D, rho_i, rho_ip1)
-    left_scale_vec  = @. rho_i  * D_left
-    right_scale_vec = @. rho_ip1 * D_right
+    # plot residual Dc and analytic (expected) only
+    p = plot(xlabel="r", ylabel="value", title="Residual Dc vs expected (vc volume term)")
+    plot!(p, r, Dc; label="Residual Dc")
+    plot!(p, r, expected; label="Analytic v_in*ρ_in/r", linestyle=:dash)
 
-    # Manufactured solution with Neumann(0) at both ends
-    A, B = 1.0, 0.0
-    c_fun(r)  = A * (r - rin)^2 * (rout - r)^2 + B
-    dcdr(r)   = 2*A * ((r - rin)*(rout - r)^2 - (r - rin)^2*(rout - r))
-    d2cdr2(r) = 2*A * ((rout - r)^2 - 4*(r - rin)*(rout - r) + (r - rin)^2)
+    p2 = plot(r, err_vec; label="error = Dc - analytic", xlabel="r", ylabel="error",
+              title="Residual error for c(r)=r")
 
-    v_of_r(r) = v_in * (rin / r)
-    Lc(r) = -v_of_r(r) * dcdr(r) + D * (d2cdr2(r) + (1/r) * dcdr(r))
+    # save
+    png1 = joinpath(@__DIR__, "compare_residual_p$(polyDeg)_n$(nCells).png")
+    png2 = joinpath(@__DIR__, "compare_residual_error_p$(polyDeg)_n$(nCells).png")
+    savefig(p, png1);  println("Saved plot → ", png1)
+    savefig(p2, png2); println("Saved plot → ", png2)
 
-    # State values on DG nodes + their radii
-    y = zeros(Float64, nPoints)
-    radii = similar(y)
-    for cell in 1:nCells
-        rL = rin + (cell-1) * deltarho
-        for n in 1:nNodes
-            r = rL + (nodes[n] + 1.0) * (deltarho/2)
-            idx = (cell-1)*nNodes + n
-            radii[idx] = r
-            y[idx] = c_fun(r)
-        end
-    end
-
-    # Apply DG operator
-    Dc = zeros(Float64, nPoints)
-    c_star = zeros(Float64, nCells + 1)
-    g_star = zeros(Float64, nCells + 1)
-    Dg = zeros(Float64, nPoints)
-    h = zeros(Float64, nPoints)
-    mul1 = zeros(Float64, nNodes)
-
-    cIn = c_fun(rin)
-
-    RadialConvDispOperatorDG.radialresidualImpl!(Dc, y, 1:nPoints, 1, nNodes, nNodes, nCells, deltarho, polyDeg, invWeights, nodes, polyDerM, invMM, MM, invMrhoM, SgMatrix, v_in, D, cIn, c_star, g_star, Dg, h, mul1, RadialConvDispOperatorDG.exact_integration(), rho_i, rho_ip1, faces_v, left_scale_vec, right_scale_vec)
-
-    L_exact = @. Lc(radii)
-    num = norm(Dc - L_exact)
-    den = max(norm(L_exact), 1.0)
-    rel_err = num / den
-    abs_err = maximum(abs.(Dc - L_exact))
-    return rel_err, abs_err
+    display(p); display(p2)
+    return (; r, Dc, expected, err_vec)
 end
 
-# --- Utility: least-squares slope on log-log ---
-function _loglog_slope(x::AbstractVector, y::AbstractVector)
-    lx = log.(x); ly = log.(y)
-    n = length(x)
-    sx = sum(lx); sy = sum(ly)
-    sxx = sum(lx .* lx); sxy = sum(lx .* ly)
-    (n*sxy - sx*sy) / (n*sxx - sx*sx)
+# ---------------------------- main (script/REPL) ------------------------------
+function __main__()
+    compare_residual_c_eq_r(3, 16; ρ_in=1.0, ρ_out=2.0, v_in=1.0)
 end
 
-# --- p-refinement EOC: vary polynomial degree at fixed mesh ---
-function run_radial_mms_eoc_p(; p_list = 1:7, nCells=8, rin=0.01, rout=0.05, v_in=2/60, D=1.0e-4)
-    #println("\nEOC (p-refinement) — MMS for radial DG (nCells=$(nCells))")
-    errs = Float64[]; dof_scale = Float64[]  # use (p+1) as resolution metric
-    #@printf("%6s  %8s  %12s  %12s\n", "p", "nNodes", "rel_L2_err", "abs_max_err")
-    #@printf("%s\n", repeat('-', 46))
-    for p in p_list
-        rel, ab = _radial_mms_error(p, nCells; rin=rin, rout=rout, v_in=v_in, D=D)
-        push!(errs, rel); push!(dof_scale, p+1)
-        #@printf("%6d  %8d  %12.4e  %12.4e\n", p, (p+1)*nCells, rel, ab)
-    end
-    slope = _loglog_slope(dof_scale, errs)
-    #@printf("Estimated slope on log(err) vs log(p+1): %.3f\n", slope)
-    return (; p_list = collect(p_list), errs, slope)
+if abspath(PROGRAM_FILE) == abspath(@__FILE__) || isinteractive()
+    __main__()
 end
-
-# --- h-refinement EOC: vary nCells at fixed polynomial degree ---
-function run_radial_mms_eoc_h(; nCells_list = [4, 6, 8, 12, 16, 24], polyDeg=4, rin=0.01, rout=0.05, v_in=2/60, D=1.0e-4)
-    #println("\nEOC (h-refinement) — MMS for radial DG (polyDeg=$(polyDeg))")
-    errs = Float64[]; hvals = Float64[]  # characteristic cell size Δr
-    #@printf("%8s  %8s  %12s  %12s\n", "nCells", "(p+1)N", "rel_L2_err", "abs_max_err")
-    #@printf("%s\n", repeat('-', 48))
-    for nc in nCells_list
-        rel, ab = _radial_mms_error(polyDeg, nc; rin=rin, rout=rout, v_in=v_in, D=D)
-        push!(errs, rel); push!(hvals, (rout-rin)/nc)
-        #@printf("%8d  %8d  %12.4e  %12.4e\n", nc, (polyDeg+1)*nc, rel, ab)
-    end
-    slope = _loglog_slope(1.0 ./ hvals, errs)  # slope wrt resolution ~ 1/h
-    #@printf("Estimated slope on log(err) vs log(1/h): %.3f\n", slope)
-    return (; nCells_list = collect(nCells_list), errs, slope)
-end
-
-# --- Snapshot for plotting: radii r, numeric residual Dc, analytic RHS L_exact ---
-function _radial_mms_snapshot(polyDeg, nCells; rin=0.01, rout=0.05, v_in=2/60, D=1.0e-4)
-    Rad = CADETJulia.RadialConvDispOp(polyDeg, nCells, rin, rout; d_rad_const=D)
-    nNodes  = Rad.nNodes
-    nPoints = Rad.nPoints
-
-    nodes      = Rad.nodes
-    polyDerM   = Rad.polyDerM
-    invMM      = Rad.invMM
-    MM         = Rad.MM
-    invWeights = Rad.invWeights
-    invMrhoM   = Rad.invMrhoM
-    SgMatrix   = Rad.SgMatrix
-    deltarho   = Rad.deltarho
-    rho_i      = Rad.rho_i
-    rho_ip1    = Rad.rho_ip1
-
-    faces_v = RadialConvDispOperatorDG.compute_faces_v(v_in, rho_i, rho_ip1, rin, nCells)
-    D_left, D_right = RadialConvDispOperatorDG.diff_at_faces(D, rho_i, rho_ip1)
-    left_scale_vec  = @. rho_i  * D_left
-    right_scale_vec = @. rho_ip1 * D_right
-
-    # Manufactured solution (same as MMS test)
-    A, B = 1.0, 0.0
-    c_fun(r)  = A * (r - rin)^2 * (rout - r)^2 + B
-    dcdr(r)   = 2*A * ((r - rin)*(rout - r)^2 - (r - rin)^2*(rout - r))
-    d2cdr2(r) = 2*A * ((rout - r)^2 - 4*(r - rin)*(rout - r) + (r - rin)^2)
-    v_of_r(r) = v_in * (rin / r)
-    Lc(r) = -v_of_r(r) * dcdr(r) + D * (d2cdr2(r) + (1/r) * dcdr(r))
-
-    # Discretize manufactured c on DG nodes
-    y = zeros(Float64, nPoints)
-    radii = similar(y)
-    for cell in 1:nCells
-        rL = rin + (cell-1) * deltarho
-        for n in 1:nNodes
-            r = rL + (nodes[n] + 1.0) * (deltarho/2)
-            idx = (cell-1)*nNodes + n
-            radii[idx] = r
-            y[idx] = c_fun(r)
-        end
-    end
-
-    # Apply DG operator to get numeric residual Dc
-    Dc = zeros(Float64, nPoints)
-    c_star = zeros(Float64, nCells + 1)
-    g_star = zeros(Float64, nCells + 1)
-    Dg = zeros(Float64, nPoints)
-    h = zeros(Float64, nPoints)
-    mul1 = zeros(Float64, nNodes)
-    cIn = c_fun(rin)
-
-    RadialConvDispOperatorDG.radialresidualImpl!(Dc, y, 1:nPoints, 1, nNodes, nNodes, nCells, deltarho, polyDeg, invWeights, nodes, polyDerM, invMM, MM, invMrhoM, SgMatrix, v_in, D, cIn, c_star, g_star, Dg, h, mul1, RadialConvDispOperatorDG.exact_integration(), rho_i, rho_ip1, faces_v, left_scale_vec, right_scale_vec)
-
-    L_exact = @. Lc(radii)
-    return radii, Dc, L_exact
-end
-
-run_radial_mms_test()
-if get(ENV, "RUN_EOC", "0") == "1"
-    run_radial_mms_eoc_p(p_list = 1:6, nCells = 8)
-    run_radial_mms_eoc_h(nCells_list = [4, 6, 8, 12, 16], polyDeg = 4)
-    res_p = run_radial_mms_eoc_p(p_list = 1:6, nCells = 8)
-    res_h = run_radial_mms_eoc_h(nCells_list = [4,6,8,12,16], polyDeg = 4)
-end
-
-# --- p-refinement ---
-#    plot(res_p.p_list .+ 1, res_p.errs, xscale = :log10, yscale = :log10, marker = :o, label = "p-refinement (fixed nCells)", xlabel = "Polynomial degree + 1", ylabel = "Relative L2 error", title = "EOC - p refinement")
-#    annotate!(3, 1e-2, text("Slope ≈ $(round(res_p.slope, digits=2))", 10))
-
-    # --- h-refinement ---
-#    plot(1.0 ./ ((0.05 - 0.01) ./ res_h.nCells_list), res_h.errs, xscale = :log10, yscale = :log10, marker = :diamond, label = "h-refinement (fixed p=4)", xlabel = "1/h (mesh resolution)", ylabel = "Relative L2 error", title = "EOC - h refinement")
-#    annotate!(30, 1e-2, text("Slope ≈ $(round(res_h.slope, digits=2))", 10))
-
-
-#rel, abs_err = _radial_mms_error(4, 8; rin=0.01, rout=0.05)
-#r = range(0.01, 0.05, length=8*(4+1))
-#c_fun(r) = (r-0.01)^2 * (0.05-r)^2
-#v_of_r(r) = (2/60) * 0.01 / r
-#D = 1e-4
-#dcdr(r) = 2*((r-0.01)*(0.05-r)^2 - (r-0.01)^2*(0.05-r))
-#d2cdr2(r) = 2*((0.05-r)^2 - 4*(r-0.01)*(0.05-r) + (r-0.01)^2)
-#Lc(r) = -v_of_r(r)*dcdr(r) + D*(d2cdr2(r) + (1/r)*dcdr(r))
-#Lc_vals = Lc.(r)
-
-# --- Spatial comparison plot (numeric residual vs analytical RHS) ---
-#r, Dc_snap, Lc_vals = _radial_mms_snapshot(4, 8; rin=0.01, rout=0.05, v_in=2/60, D=1e-4)
-
-#plot(r, Lc_vals, lw=2, label="Analytical RHS F(r)")
-#plot!(r, Dc_snap, lw=2, label="DG residual")
-#plot!(r, abs.(Dc_snap .- Lc_vals), lw=2, label="|Error|")
-#xlabel!("r [m]")
-#ylabel!("Magnitude")
-#title!("Radial DG vs Analytical Residual")
