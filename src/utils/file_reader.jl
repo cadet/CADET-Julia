@@ -107,7 +107,6 @@ function create_units(model::Union{Dict, OrderedDict})
                 column_instance = rLRM(nComp = value["ncomp"], 
 				    				col_inner_radius = value["col_inner_radius"]/1.0, 
                                     col_outer_radius = value["col_outer_radius"]/1.0, 
-                                    col_height = value["col_height"]/1.0, 
 					    			d_rad = value["col_dispersion"]./1.0, 
 				    	    		eps_c = value["col_porosity"]/1.0, 
 							    	c0 = value["init_c"], 
@@ -115,7 +114,6 @@ function create_units(model::Union{Dict, OrderedDict})
 								    # save_output = true, # defaults to true
 								    polyDeg = value["discretization"]["polyDeg"], # defaults to 4
 							    	nCells = value["discretization"]["ncol"], # defaults to 8
-						    		exact_integration = value["discretization"]["exact_integration"], # 
                                     cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
 				    				)
 				column_instance.bind = get_bind(value,column_instance.bindStride)
@@ -152,18 +150,16 @@ function create_units(model::Union{Dict, OrderedDict})
                 column_instance = rLRMP(nComp = value["ncomp"], 
                                         col_inner_radius = value["col_inner_radius"]/1.0, 
                                         col_outer_radius = value["col_outer_radius"]/1.0, 
-                                        col_height = value["col_height"]/1.0,
                                         d_rad = value["col_dispersion"]./1.0, 
                                         eps_c = value["col_porosity"]/1.0, 
-                                        eps_p = value["par_porosity"]/1.0,
-                                        kf = value["film_diffusion"]./1.0,
-                                        Rp = value["par_radius"]/1.0,
-                                        c0 = value["init_c"],
-                                        cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
-                                        q0 = value["init_q"],
+                                        eps_p = value["par_porosity"]/1.0, 
+                                        kf = value["film_diffusion"]./1.0, 
+                                        Rp = value["par_radius"]/1.0, 
+                                        c0 = value["init_c"], 
+                                        cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1, 
+                                        q0 = value["init_q"], 
                                         polyDeg = value["discretization"]["polyDeg"], # defaults to 4
                                         nCells = value["discretization"]["ncol"], # defaults to 8
-                                        exact_integration = value["discretization"]["exact_integration"],
                                         cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0                                   
                                         )
 	    		column_instance.bind = get_bind(value,column_instance.bindStride)
@@ -202,21 +198,19 @@ function create_units(model::Union{Dict, OrderedDict})
                 column_instance = rGRM(nComp = value["ncomp"], 
                                         col_inner_radius = value["col_inner_radius"]/1.0, 
                                         col_outer_radius = value["col_outer_radius"]/1.0, 
-                                        col_height = value["col_height"]/1.0, 
                                         d_rad = value["col_dispersion"]./1.0, 
                                         eps_c = value["col_porosity"]/1.0, 
                                         eps_p = value["par_porosity"]/1.0,
                                         kf = value["film_diffusion"]./1.0,
-                                        Rp = value["par_radius"]/1.0,
+                                        Rp = value["par_radius"]/1.0, 
                                         Rc = (haskey(value, "par_coreradius") ? value["par_coreradius"] : 0.0)/1.0,
-                                        Dp = value["par_diffusion"]./1.0,
-                                        c0 = value["init_c"],
-                                        cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
-                                        q0 = value["init_q"],
+                                        Dp = value["par_diffusion"]./1.0, 
+                                        c0 = value["init_c"], 
+                                        cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1, 
+                                        q0 = value["init_q"], 
                                         polyDeg = value["discretization"]["polyDeg"], # defaults to 4
                                         polyDegPore = value["discretization"]["polyDegPore"], # defaults to 4
                                         nCells = value["discretization"]["ncol"], # defaults to 8
-                                        exact_integration = value["discretization"]["exact_integration"],
                                         cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
                                         )
 			    column_instance.bind = get_bind(value,column_instance.bindStride)
