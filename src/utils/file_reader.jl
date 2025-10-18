@@ -1,6 +1,28 @@
+"""
+create_units(model::Union{Dict, OrderedDict})
 
+Constructs and initializes the simulation units (inlets, outlets, columns) from a CADET model dictionary.
 
+# Arguments
+- `model::Union{Dict, OrderedDict}`: Parsed CADET model input, see test folder for examples.
+
+# Returns
+A tuple `(inlets, outlets, columns, switches, solverOptions)` where:
+- `inlets`: Tuple of inlet unit objects.
+- `outlets`: Tuple of outlet unit objects.
+- `columns`: Tuple of column unit objects (e.g., LRM, LRMP, GRM, cstr).
+- `switches`: Switches object containing section and connection information.
+- `solverOptions`: SolverCache object with solver configuration and initial conditions.
+
+# Details
+- Parses the model structure to instantiate all units and their connections.
+- Handles different unit types (INLET, OUTLET, LRM, LRMP, GRM, cstr).
+- Sets up connections, flow rates, and initial conditions.
+- Configures solver tolerances and time points.
+
+"""
 function create_units(model::Union{Dict, OrderedDict})
+    
     units = Dict{String, Any}()
     inlets = []
     columns = []
@@ -79,6 +101,28 @@ function create_units(model::Union{Dict, OrderedDict})
                 push!(outlets, outlet_instance)
                 units[unit_name] = outlet_instance
 
+            elseif unit_type == "LUMPED_RATE_MODEL_WITHOUT_PORES"
+                # Create column instance
+                # Replace the following line with your column instantiation logic
+                column_instance = LRM(nComp = value["ncomp"], 
+									colLength = value["col_length"]/1.0, 
+									d_ax = value["col_dispersion"]./1.0, 
+									eps_c = value["col_porosity"]/1.0, 
+									c0 = value["init_c"], 
+									q0 = value["init_q"],
+									# save_output = true, # defaults to true
+									polyDeg = value["discretization"]["polyDeg"], # defaults to 4
+									nCells = value["discretization"]["ncol"], # defaults to 8
+									exact_integration = value["discretization"]["exact_integration"], # 
+                                    cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
+									)
+				column_instance.bind = get_bind(value,column_instance.bindStride)
+                push!(columns, column_instance)
+                # Assign ID and number in columns
+                push!(columnNumber, length(columnNumber)+1)
+                push!(columnIDs, unit_name)
+                units[unit_name] = column_instance
+
             elseif unit_type == "RADIAL_LUMPED_RATE_MODEL_WITHOUT_PORES"
                 # Create column instance
                 # Replace the following line with your column instantiation logic
@@ -100,53 +144,8 @@ function create_units(model::Union{Dict, OrderedDict})
                 push!(columnNumber, length(columnNumber)+1)
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
-            
-            elseif unit_type == "LUMPED_RATE_MODEL_WITHOUT_PORES"
-                # Create column instance
-                # Replace the following line with your column instantiation logic
-                column_instance = LRM(nComp = value["ncomp"],
-                                    colLength = value["col_length"]/1.0, 
-					    			d_ax = value["col_dispersion"]./1.0, 
-						    		eps_c = value["col_porosity"]/1.0, 
-							    	c0 = value["init_c"], 
-							    	q0 = value["init_q"],
-								    # save_output = true, # defaults to true
-							    	polyDeg = value["discretization"]["polyDeg"], # defaults to 4
-							    	nCells = value["discretization"]["ncol"], # defaults to 8
-									exact_integration = value["discretization"]["exact_integration"], # 
-                                    cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
-					    			)
-			    column_instance.bind = get_bind(value,column_instance.bindStride)
-                push!(columns, column_instance)
-                # Assign ID and number in columns
-                push!(columnNumber, length(columnNumber)+1)
-                push!(columnIDs, unit_name)
-                units[unit_name] = column_instance
 
-			elseif unit_type == "RADIAL_LUMPED_RATE_MODEL_WITH_PORES"
-                # Create column instance
-                column_instance = rLRMP(nComp = value["ncomp"], 
-                                        col_inner_radius = value["col_inner_radius"]/1.0, 
-                                        col_outer_radius = value["col_outer_radius"]/1.0, 
-                                        d_rad = value["col_dispersion"]./1.0, 
-                                        eps_c = value["col_porosity"]/1.0, 
-                                        eps_p = value["par_porosity"]/1.0, 
-                                        kf = value["film_diffusion"]./1.0, 
-                                        Rp = value["par_radius"]/1.0, 
-                                        c0 = value["init_c"], 
-                                        cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1, 
-                                        q0 = value["init_q"], 
-                                        polyDeg = value["discretization"]["polyDeg"], # defaults to 4
-                                        nCells = value["discretization"]["ncol"], # defaults to 8
-                                        cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0                                   
-                                        )
-	    		column_instance.bind = get_bind(value,column_instance.bindStride)
-                push!(columns, column_instance)
-                # Assign ID and number in columns
-                push!(columnNumber, length(columnNumber)+1)
-                push!(columnIDs, unit_name)
-                units[unit_name] = column_instance
-            elseif unit_type == "LUMPED_RATE_MODEL_WITH_PORES"
+			elseif unit_type == "LUMPED_RATE_MODEL_WITH_PORES"
                 # Create column instance
                 column_instance = LRMP(nComp = value["ncomp"], 
                                         colLength = value["col_length"]/1.0, 
@@ -163,42 +162,14 @@ function create_units(model::Union{Dict, OrderedDict})
                                         exact_integration = value["discretization"]["exact_integration"],
                                         cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
                                         )
-		    	column_instance.bind = get_bind(value,column_instance.bindStride)
+				column_instance.bind = get_bind(value,column_instance.bindStride)
                 push!(columns, column_instance)
                 # Assign ID and number in columns
                 push!(columnNumber, length(columnNumber)+1)
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
 
-			elseif unit_type == "RADIAL_GENERAL_RATE_MODEL"
-                # Create column instance
-                # Replace the following line with your column instantiation logic
-                column_instance = rGRM(nComp = value["ncomp"], 
-                                        col_inner_radius = value["col_inner_radius"]/1.0, 
-                                        col_outer_radius = value["col_outer_radius"]/1.0, 
-                                        d_rad = value["col_dispersion"]./1.0, 
-                                        eps_c = value["col_porosity"]/1.0, 
-                                        eps_p = value["par_porosity"]/1.0,
-                                        kf = value["film_diffusion"]./1.0,
-                                        Rp = value["par_radius"]/1.0, 
-                                        Rc = (haskey(value, "par_coreradius") ? value["par_coreradius"] : 0.0)/1.0,
-                                        Dp = value["par_diffusion"]./1.0, 
-                                        c0 = value["init_c"], 
-                                        cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1, 
-                                        q0 = value["init_q"], 
-                                        polyDeg = value["discretization"]["polyDeg"], # defaults to 4
-                                        polyDegPore = value["discretization"]["polyDegPore"], # defaults to 4
-                                        nCells = value["discretization"]["ncol"], # defaults to 8
-                                        cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
-                                        )
-			    column_instance.bind = get_bind(value,column_instance.bindStride)
-                push!(columns, column_instance)
-                # Assign ID and number in columns
-                push!(columnNumber, length(columnNumber)+1)
-                push!(columnIDs, unit_name)
-                units[unit_name] = column_instance
-
-            elseif unit_type == "GENERAL_RATE_MODEL"
+			elseif unit_type == "GENERAL_RATE_MODEL"
                 # Create column instance
                 # Replace the following line with your column instantiation logic
                 column_instance = GRM(nComp = value["ncomp"], 
@@ -219,12 +190,13 @@ function create_units(model::Union{Dict, OrderedDict})
                                         exact_integration = value["discretization"]["exact_integration"],
                                         cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0 
                                         )
-    			column_instance.bind = get_bind(value,column_instance.bindStride)
+				column_instance.bind = get_bind(value,column_instance.bindStride)
                 push!(columns, column_instance)
                 # Assign ID and number in columns
                 push!(columnNumber, length(columnNumber)+1)
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
+				
 				
 			elseif unit_type == "CSTR"
 				column_instance = cstr(; nComp = value["ncomp"], 
@@ -402,6 +374,25 @@ function create_units(model::Union{Dict, OrderedDict})
     return Tuple(inlets), Tuple(outlets), Tuple(columns), switches, solverOptions
 end
 
+"""
+get_bind(value, bindstride)
+
+Constructs and returns the appropriate binding model object for a column based on the model specified for file_reader.
+
+# Arguments
+- `value`: Dictionary containing adsorption and discretization parameters for the unit.
+- `bindstride`: Integer specifying the stride or number of binding sites/components.
+
+# Returns
+A binding model object (e.g., `Linear`, `Langmuir`, etc.) configured according to the provided parameters.
+
+# Details
+- Determines the adsorption model type (e.g., LINEAR, MULTI_COMPONENT_LANGMUIR) and extracts relevant kinetic and equilibrium parameters.
+- Handles both kinetic and equilibrium binding models.
+- Converts and validates the number of bound components.
+```
+
+"""
 function get_bind(value,bindstride)
 	# If a kinetic constant is specified 
 	kkin = haskey(value["adsorption"], "kkin") ? value["adsorption"]["kkin"] : 1.0
@@ -457,7 +448,29 @@ function get_bind(value,bindstride)
 end
 
 
+"""
+create_units(model::HDF5.File)
 
+Constructs and initializes the simulation units (inlets, outlets, columns) from a CADET HDF5 file.
+
+# Arguments
+- `model::HDF5.File`: Opened CADET HDF5 file.
+
+# Returns
+A tuple `(inlets, outlets, columns, switches, solverOptions)` where:
+- `inlets`: Tuple of inlet unit objects.
+- `outlets`: Tuple of outlet unit objects.
+- `columns`: Tuple of column unit objects (e.g., LRM, LRMP, GRM, cstr).
+- `switches`: Switches object containing section and connection information.
+- `solverOptions`: SolverCache object with solver configuration and initial conditions.
+
+# Details
+- Parses the model structure to instantiate all units and their connections.
+- Handles different unit types (INLET, OUTLET, LRM, LRMP, GRM, cstr).
+- Sets up connections, flow rates, and initial conditions.
+- Configures solver tolerances and time points.
+
+"""
 function create_units(model::HDF5.File)
     units = Dict{String, Any}()
     inlets = []

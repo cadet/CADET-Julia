@@ -1,4 +1,6 @@
 *.h5 
 Manifest.toml
-test/test12_radial_flow/compare_residual_error_p3_n16.png
-test/test12_radial_flow/compare_residual_p3_n16.png
+src/.DS_Store
+.DS_Store
+test/test12_radial_flow/eoc_h_residual_p3.png
+test/test12_radial_flow/eoc_p_residual_n32.png
