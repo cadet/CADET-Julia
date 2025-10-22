@@ -64,6 +64,65 @@ mutable struct ConvDispOp
 	end
 end
 
+mutable struct RadialConvDispOp
+	# A struct containing the DG variables for the convection dispersion operator which is the same for LRM, LRMP and GRM. 
+	# DG properties for the convection dispersion operator
+	polyDeg::Int64
+	nCells::Int64
+	nNodes::Int64
+    nPoints::Int64
+    strideNode::Int64
+    strideCell::Int64
+
+	nodes::Vector{Float64}
+    invWeights::Vector{Float64}
+    invMM::Matrix{Float64}
+	MM00::Matrix{Float64}
+	MM01::Matrix{Float64}
+	polyDerM::Matrix{Float64}
+    deltarho::Float64
+    rho_i::Vector{Float64}
+    rho_ip1::Vector{Float64}
+
+	# Allocation vectors and matrices
+	mul1::Vector{Float64}
+    c_star::Vector{Float64}
+    g_star::Vector{Float64}
+	Dc::Vector{Float64}
+    Dg::Vector{Float64}
+    h::Vector{Float64}
+
+	function RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius)
+
+		nNodes = polyDeg + 1
+		nPoints = nNodes * nCells	#Number of cells times number of nodes per component
+		strideNode = 1				#Number of points to next concentration in the state vector, here 1
+		strideCell = nNodes * strideNode
+
+		# delta rho [m]
+		deltarho = (col_outer_radius - col_inner_radius) / nCells
+		rho_i  = [col_inner_radius + (cell - 1) * deltarho for cell in 1:nCells] # face radii
+        rho_ip1 = [col_inner_radius + cell * deltarho for cell in 1:nCells]
+
+		# Obtain LGL nodes and weights
+		nodes, invWeights = DGElements.lglnodes(polyDeg) #LGL nodes & weights
+		invMM = DGElements.invMMatrix(nodes, polyDeg) #Inverse mass matrix
+		MM00 = DGElements.MMatrix(nodes, polyDeg)
+		MM01 = DGElements.MMatrix(nodes, polyDeg, 0, 1)
+		polyDerM = DGElements.derivativeMatrix(polyDeg, nodes) #derivative matrix
+
+		# allocation vectors and matrices
+		mul1 = zeros(Float64, nNodes)
+		c_star = zeros(Float64, nCells + 1)
+		g_star = zeros(Float64, nCells + 1)
+		Dc = zeros(Float64, nPoints)
+		Dg = zeros(Float64, nPoints)
+		h = zeros(Float64, nPoints)
+
+		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, invWeights, invMM, MM00, MM01, polyDerM, deltarho, rho_i, rho_ip1, mul1, c_star, g_star, Dc, Dg, h)
+	end
+end
+
 
 """
     PoreOp
@@ -373,6 +432,126 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::LRM, t, section, sink, switch
     nothing
 end
 
+################################# LUMPED RATE MODEL (rLRM) #################################
+	mutable struct rLRM <: ModelBase
+	# Check parameters
+	# These parameters are the minimum to be specified for the LRM
+	nComp::Int64 
+    col_inner_radius::Float64
+    col_outer_radius::Float64
+	#col_height::Float64
+	cross_section_area::Float64
+    d_rad::Union{Float64, Vector{Float64}}
+    eps_c::Float64
+	c0::Union{Float64, Vector{Float64}} # defaults to 0
+	cp0::Union{Float64, Vector{Float64}} # if not specified, defaults to c0
+	q0::Union{Float64, Vector{Float64}} # defaults to 0
+    
+	cIn::Vector{Float64}
+
+	polyDeg::Int64
+	nCells::Int64	
+	
+    # Convection Dispersion properties
+	ConvDispOpInstance::RadialConvDispOp
+
+	# based on the input, remaining properties are calculated in the function LRM
+	#Determined properties 
+	bindStride::Int64
+	adsStride::Int64
+	unitStride::Int64
+
+	# Allocation vectors and matrices
+    idx::UnitRange{Int64}
+	Fc::Float64
+	Fjac::Float64
+	cpp::Vector{Float64}
+    RHS_q::Vector{Float64}
+    qq::Vector{Float64}
+	RHS::Vector{Float64}
+	solution_outlet::Matrix{Float64}
+	solution_times::Vector{Float64}
+	bind::bindingBase
+	
+	
+
+	# Default variables go in the arguments in the LRM
+	function rLRM(; nComp, col_inner_radius, col_outer_radius, d_rad, eps_c, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, cross_section_area=1.0)
+		
+		# Get necessary variables for convection dispersion DG 
+		ConvDispOpInstance = RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius)
+
+		# The bind stride is the stride between each component for binding. For LRM, it is nPoints=(polyDeg + 1) * nCells
+		bindStride = ConvDispOpInstance.nPoints
+		adsStride = 0  #stride to guide to liquid adsorption concentrations i.e., cpp
+		unitStride = adsStride + bindStride*nComp*2
+
+		# allocation vectors and matrices
+		idx = 1:ConvDispOpInstance.nPoints
+		Fc = (1-eps_c)/eps_c
+		Fjac = Fc
+		cpp = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
+		RHS_q = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
+		qq = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
+		RHS = zeros(Float64, adsStride + 2*nComp*bindStride)
+		cIn = zeros(Float64, nComp)
+		
+		# if the radial dispersion is specified for a single component, assume they are the same for all components
+		if typeof(d_rad) == Float64 
+			d_rad = ones(Float64,nComp) * d_rad
+		end
+
+		# Set initial condition vectors 
+		c0, cp0, q0 = initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
+		
+		# Solution_outlet as well 
+		solution_outlet = zeros(Float64,1,nComp)
+		solution_times = Float64[]
+
+		# Default binding - assumes linear with zero binding 
+		bind = Linear(
+					ka = zeros(Float64,nComp),
+					kd = zeros(Float64,nComp),
+					is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
+					nBound = zeros(Bool,nComp), # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
+					bindStride = bindStride, # Not necessary for Linear model, only for Langmuir and SMA
+					# nBound =  [1,0,1,1] # Specify non-bound states by a zero, defaults to assume all bound states
+					)
+		
+		# The new commando must match the order of the elements in the struct!
+		new(nComp, col_inner_radius, col_outer_radius, cross_section_area, d_rad, eps_c, c0, cp0, q0, cIn, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, unitStride, idx, Fc, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
+	end
+end
+
+
+# Define a function to compute the transport term for the rLRM
+function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switches, idx_units) 
+	# section = i from call 
+	# sink is the unit i.e., h from previous call
+	
+	# Determining inlet velocity if specified dynamically
+	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
+
+	@inbounds for j = 1:m.nComp
+
+		# Indices
+		# For the indicies regarding mobile phase, + idx_units[sink] must be added to get the right column 
+		# For the stationary phase, RHS_q is already a slice of the stationary phase of the right column
+		m.idx =  1 + (j-1) * m.ConvDispOpInstance.nPoints : m.ConvDispOpInstance.nPoints + (j-1) * m.ConvDispOpInstance.nPoints
+
+		# inlet conc for comp j
+		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j])
+
+		# Convection Dispersion term
+		cpp_block = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp]
+		RadialConvDispOperatorDG.radialresidualImpl!(m.ConvDispOpInstance.Dc, cpp_block, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nNodes, m.ConvDispOpInstance.nCells, m.ConvDispOpInstance.deltarho, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.ConvDispOpInstance.MM00, m.ConvDispOpInstance.MM01, m.ConvDispOpInstance.nodes, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_rad[j], m.ConvDispOpInstance.rho_i, m.ConvDispOpInstance.rho_ip1, m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.g_star, m.ConvDispOpInstance.Dg, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1)
+		
+		# Mobile phase RHS 
+		@views RHS[m.idx .+ idx_units[sink]] .= m.ConvDispOpInstance.Dc - m.Fc * RHS_q[m.idx]
+	end
+	
+    nothing
+end
 
 ################################# LUMPED RATE MODEL WITH PORES (LRMP) #################################
 """

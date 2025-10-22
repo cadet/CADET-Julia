@@ -26,7 +26,6 @@ using .RadialConvDispOperatorDG
 # Include the Julia functions
 include("isotherms/binding_base.jl")
 include("DG/model_base.jl")
-include("DG/radial_model_base.jl")
 include("utils/flow_rates.jl")
 include("utils/cstr.jl")
 include("utils/connections.jl")
