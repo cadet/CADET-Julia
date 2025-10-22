@@ -8,7 +8,7 @@ ncomp  = 1
 c0     = 1.0          # inlet concentration during pulse
 tinj   = 60.0         # pulse duration [s]
 tend   = 130.0        # final time [s]
-rin, rout = 0.025, 0.5
+rin, rout = 0.005, 0.01
 D_rad  = 1.0e-8
 εc     = 0.40
 polyDeg, nCells = 4, 40
@@ -24,24 +24,11 @@ col = CADETJulia.rLRM(nComp = ncomp, col_inner_radius = rin, col_outer_radius = 
 
 # Inlet with 2 sections (pulse then wash)
 inlet = CADETJulia.CreateInlet(nComp = ncomp, nSections = 2)
-CADETJulia.modify_inlet!(
-    inlet = inlet,
-    nComp = ncomp,
-    section = 1,                 # section 1: t ∈ [0, tinj)
-    cIn_c = fill(c0, ncomp),
-    cIn_l = zeros(ncomp),
-    cIn_q = zeros(ncomp),
-    cIn_cube = zeros(ncomp),
-)
-CADETJulia.modify_inlet!(
-    inlet = inlet,
-    nComp = ncomp,
-    section = 2,                 # section 2: t ∈ [tinj, tend]
+CADETJulia.modify_inlet!(inlet = inlet,nComp = ncomp,section = 1,cIn_c = fill(c0, ncomp),cIn_l = zeros(ncomp),cIn_q = zeros(ncomp),cIn_cube = zeros(ncomp),)
+CADETJulia.modify_inlet!(inlet = inlet,
+    nComp = ncomp,section = 2,                 # section 2: t ∈ [tinj, tend]
     cIn_c = fill(0.0, ncomp),
-    cIn_l = zeros(ncomp),
-    cIn_q = zeros(ncomp),
-    cIn_cube = zeros(ncomp),
-)
+    cIn_l = zeros(ncomp),cIn_q = zeros(ncomp),cIn_cube = zeros(ncomp),)
 
 # Outlet
 outlet = CADETJulia.CreateOutlet(nComp = ncomp)
@@ -50,14 +37,7 @@ outlet = CADETJulia.CreateOutlet(nComp = ncomp)
 # idx_units offsets: for a single column, it starts at 0
 idx_units = [0]
 
-switches = CADETJulia.Switches(
-    nSections = 2,
-    section_times = [0.0, tinj, tend],
-    nSwitches = 1,
-    nColumns = 1,
-    nComp = ncomp,
-    idx_units = idx_units,
-)
+switches = CADETJulia.Switches(nSections = 2,section_times = [0.0, tinj, tend],nSwitches = 1,nColumns = 1,nComp = ncomp,idx_units = idx_units,)
 
 # Register connections
 # 1) INLET (unit_000) -> COLUMN (column index 1). For columns, the 5th arg is velocity u
