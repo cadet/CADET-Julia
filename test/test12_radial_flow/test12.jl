@@ -1,127 +1,144 @@
-using LinearAlgebra
-using Printf
-using Plots
+
+
 using CADETJulia
+using Printf
 
-# --------------------------- utilities ---------------------------------------
-# map DG nodes to physical radius in a cell
-hatrho(nodes, ρi, Δρ) = @. ρi + (nodes + 1) * (Δρ/2)
+# ------------------ User knobs ------------------
+ncomp  = 1
+c0     = 1.0          # inlet concentration during pulse
+tinj   = 60.0         # pulse duration [s]
+tend   = 130.0        # final time [s]
+rin, rout = 0.025, 0.5
+D_rad  = 1.0e-8
+εc     = 0.40
+polyDeg, nCells = 4, 40
+u_in   = 1.0e-4       # superficial velocity at inner radius [m/s]
 
-# build face velocities for constant volumetric flow (v ∝ 1/r)
-function face_velocities(op; v_in::Float64=1.0, ρ_in::Float64=op.rho_i[1])
-    rv = Vector{Float64}(undef, op.nCells + 1)
-    rv[1] = v_in
-    @inbounds for f in 2:op.nCells
-        rv[f] = v_in * (ρ_in / op.rho_i[f])
+abstol = 1.0e-10
+reltol = 1.0e-8
+Δtout  = 0.5
+
+# ------------------ Build units manually ------------------
+# Column (radial LRM)
+col = CADETJulia.rLRM(nComp = ncomp, col_inner_radius = rin, col_outer_radius = rout, d_rad = fill(D_rad, ncomp), eps_c = εc, c0 = fill(0.0, ncomp), q0 = fill(0.0, ncomp), polyDeg = polyDeg, nCells = nCells, cross_section_area = 1.0,)
+
+# Inlet with 2 sections (pulse then wash)
+inlet = CADETJulia.CreateInlet(nComp = ncomp, nSections = 2)
+CADETJulia.modify_inlet!(
+    inlet = inlet,
+    nComp = ncomp,
+    section = 1,                 # section 1: t ∈ [0, tinj)
+    cIn_c = fill(c0, ncomp),
+    cIn_l = zeros(ncomp),
+    cIn_q = zeros(ncomp),
+    cIn_cube = zeros(ncomp),
+)
+CADETJulia.modify_inlet!(
+    inlet = inlet,
+    nComp = ncomp,
+    section = 2,                 # section 2: t ∈ [tinj, tend]
+    cIn_c = fill(0.0, ncomp),
+    cIn_l = zeros(ncomp),
+    cIn_q = zeros(ncomp),
+    cIn_cube = zeros(ncomp),
+)
+
+# Outlet
+outlet = CADETJulia.CreateOutlet(nComp = ncomp)
+
+# ------------------ Switching & connections ------------------
+# idx_units offsets: for a single column, it starts at 0
+idx_units = [0]
+
+switches = CADETJulia.Switches(
+    nSections = 2,
+    section_times = [0.0, tinj, tend],
+    nSwitches = 1,
+    nColumns = 1,
+    nComp = ncomp,
+    idx_units = idx_units,
+)
+
+# Register connections
+# 1) INLET (unit_000) -> COLUMN (column index 1). For columns, the 5th arg is velocity u
+CADETJulia.Connection(
+    switches,           # switches object to mutate
+    1,                  # switch index (1-based)
+    1,                  # section index (1: applies to both unless you add more switches)
+    inlet,              # source (inlet instance)
+    1,                  # sink (column number in [1..nColumns])
+    u_in,               # superficial velocity at inner face; radial profile handled internally
+    0.0, 0.0, 0.0, 0.0, # dynamic flow coeffs (unused)
+    false,              # dynamic_flow_check
+)
+
+# 2) COLUMN -> OUTLET. For outlets, the value is ignored
+CADETJulia.Connection(
+    switches,
+    1,
+    1,
+    1,                  # source (column number)
+    outlet,             # sink (outlet instance)
+    0.0,
+    0.0, 0.0, 0.0, 0.0,
+    false,
+)
+
+# ------------------ Solver options ------------------
+solverOptions = CADETJulia.SolverCache(
+    columns = (col,),
+    switches = switches,
+    outlets = (outlet,),
+    abstol = abstol,
+    reltol = reltol,
+    solution_times = collect(0.0:Δtout:tend),
+    prototypeJacobian = true,
+    analyticalJacobian = false,
+)
+
+# ------------------ Solve ------------------
+sol = CADETJulia.solve_model(columns=(col,), switches=switches, outlets=(outlet,), solverOptions=solverOptions)
+
+# ------------------ Report outlet ------------------
+# The column struct stores outlet trace & times; print quick summary
+@printf("\nPulse injection run finished.\n")
+@printf("  tinj = %.3f s, u_in = %.3e m/s, D_rad = %.3e m^2/s\n", tinj, u_in, D_rad)
+
+
+
+# If available, dump last few samples
+if !isempty(col.solution_times)
+    nt = length(col.solution_times)
+    nshow = min(nt, 400)
+    @printf("\nLast %d samples at outlet (time, c_out):\n", nshow)
+    for k in (nt - nshow + 1):nt
+        t = col.solution_times[k]
+        c = col.solution_outlet[k, 1]  # first component
+        @printf("  %10.3f  %14.6e\n", t, c)
     end
-    rv[op.nCells + 1] = v_in * (ρ_in / op.rho_ip1[op.nCells])
-    return rv
 end
 
-# build full vector of physical radii at all DG nodes
-function radii_vector(op)
-    r = similar(op.Dc)
-    @inbounds for cell in 1:op.nCells
-        ρnodes = hatrho(op.nodes, op.rho_i[cell], op.deltarho)
-        r[(cell-1)*op.nNodes+1 : cell*op.nNodes] .= ρnodes
+
+#############################################
+# Plot outlet concentration for [0,60,130] #
+#############################################
+try
+    @eval begin
+        using Plots
     end
-    return r
-end
-
-# ---------------- residual assembly for c(r)=r, ----------------
-function assemble_residual_c_eq_r(polyDeg::Int, nCells::Int; ρ_in::Float64=1.0, ρ_out::Float64=2.0, v_in::Float64=1.0, d_rad::Float64=0.0, c_in::Float64=ρ_in)
-    op = CADETJulia.RadialConvDispOp(polyDeg, nCells, ρ_in, ρ_out)
-
-    # state y: c(r) = r
-    y = similar(op.Dc); fill!(y, 0.0)
-    @inbounds for cell in 1:op.nCells
-        ρnodes = hatrho(op.nodes, op.rho_i[cell], op.deltarho)
-        y[(cell-1)*op.nNodes+1 : cell*op.nNodes] .= ρnodes
-    end
-
-    radial_v = face_velocities(op; v_in=v_in, ρ_in=ρ_in)
-    left_scale_vec  = op.rho_i   .* d_rad
-    right_scale_vec = op.rho_ip1 .* d_rad
-
-    # scratch aliases
-    Dc     = op.Dc
-    fill!(Dc, 0.0)
-    c_star = op.c_star
-    g_star = op.g_star
-    Dg     = op.Dg
-    h      = op.h
-    mul1   = op.mul1
-    idx    = 1:op.nPoints
-
-    cIn = c_in
-    CADETJulia.RadialConvDispOperatorDG.radialresidualImpl!(Dc, y, idx, op.strideNode, op.strideCell, op.nNodes, op.nCells, op.deltarho, polyDeg, op.invWeights, op.polyDerM, op.invMM, op.MM00, op.MM01, op.nodes, v_in, d_rad, cIn, c_star, g_star, Dg, h, mul1, op.rho_i, op.rho_ip1, radial_v, left_scale_vec, right_scale_vec)
-
-    return op, y, Dc
-end
-
-# ---------------------------- EOC ----------------------------
-function residual_err_inf(p::Int, nC::Int; ρ_in::Float64=0.05, ρ_out::Float64=0.10, v_in::Float64=2/60, d_rad::Float64=1e-6, c_in::Float64=ρ_in)
-    _, _, Dc = assemble_residual_c_eq_r(p, nC; ρ_in=ρ_in, ρ_out=ρ_out, v_in=v_in, d_rad=d_rad, c_in=c_in)
-    return maximum(abs.(Dc))
-end
-
-# EOC for halving h (log2 of consecutive error ratios)
-function eoc_from_errs(errs::AbstractVector{<:Real})
-    if length(errs) < 2
-        return Float64[]
-    end
-    e = similar(collect(float.(errs[1:end-1])))
-    @inbounds for k in 1:length(e)
-        e[k] = log(errs[k]/errs[k+1]) / log(2)
-    end
-    return e
-end
-
-# h-refinement study: nCells doubles each step
-function eoc_h(p::Int; nCells_list = [4,8,16,32], ρ_in=0.05, ρ_out=0.10, v_in=2/60, d_rad=1e-6, c_in=ρ_in)
-    errs = [residual_err_inf(p, nC; ρ_in=ρ_in, ρ_out=ρ_out, v_in=v_in, d_rad=d_rad, c_in=c_in) for nC in nCells_list]
-    e = eoc_from_errs(errs)
-    @info "h-refinement: errs" nCells_list errs
-    @info "h-refinement: EOC" e
-    return (; nCells_list, errs, eoc=e)
-end
-
-# p-refinement study: increase polynomial degree at fixed mesh
-function eoc_p(nC::Int; p_list = [1,2,3,4,5], ρ_in=0.05, ρ_out=0.10, v_in=2/60, d_rad=1e-6, c_in=ρ_in)
-    errs = [residual_err_inf(p, nC; ρ_in=ρ_in, ρ_out=ρ_out, v_in=v_in, d_rad=d_rad, c_in=c_in) for p in p_list]
-    @info "p-refinement: errs" p_list errs
-    return (; p_list, errs)
-end
-
-# ---------------------------- EOC plotting helpers ----------------------------
-function plot_eoc_h(p::Int; nCells_list=[4,8,16,32], ρ_in=0.05, ρ_out=0.10, v_in=2/60, d_rad=1e-6, c_in=ρ_in)
-    data = eoc_h(p; nCells_list=nCells_list, ρ_in=ρ_in, ρ_out=ρ_out, v_in=v_in, d_rad=d_rad, c_in=c_in)
-    hs = (ρ_out - ρ_in) ./ data.nCells_list
-    plt = plot(hs, data.errs; xscale=:log10, yscale=:log10, marker=:circle, xlabel="h = Δρ", ylabel="‖Residual‖∞", title="h-refinement residual (p=$(p), d_rad=$(d_rad), c_in=$(c_in))")
-    png = joinpath(@__DIR__, "eoc_h_residual_p$(p).png")
-    savefig(plt, png); println("Saved h-refinement plot → ", png)
+    tmin, tmid, tmax = 0.0, 60.0, 130.0
+    mask = (col.solution_times .>= tmin) .& (col.solution_times .<= tmax)
+    plt = plot(
+        col.solution_times[mask],
+        col.solution_outlet[mask, 1],
+        xlabel = "Time [s]",
+        ylabel = "Outlet concentration",
+        title = "Radial column pulse elution (sections: [0,60,130])",
+        legend = false,
+        lw = 2,
+    )
+    vline!([tmin, tmid, tmax], l = (:dash, 1))
     display(plt)
-    return (; h=hs, errs=data.errs, eoc=data.eoc)
-end
-
-function plot_eoc_p(nC::Int; p_list=[1,2,3,4,5], ρ_in=0.05, ρ_out=0.10, v_in=2/60, d_rad=1e-6, c_in=ρ_in)
-    data = eoc_p(nC; p_list=p_list, ρ_in=ρ_in, ρ_out=ρ_out, v_in=v_in, d_rad=d_rad, c_in=c_in)
-    plt = plot(data.p_list, data.errs; yscale=:log10, marker=:square, xlabel="p (polyDeg)", ylabel="‖Residual‖∞", title="p-refinement residual (nCells=$(nC), d_rad=$(d_rad), c_in=$(c_in))")
-    png = joinpath(@__DIR__, "eoc_p_residual_n$(nC).png")
-    savefig(plt, png); println("Saved p-refinement plot → ", png)
-    display(plt)
-    return data
-end
-
-
-# ---------------------------- main (script/REPL) ------------------------------
-function __main__()
-    eoc_h(3; nCells_list=[16,32,64,128,256], ρ_in=0.05, ρ_out=0.1, v_in=2/60, d_rad=1e-6, c_in=0.05)
-    eoc_p(32; p_list=[5,20,40,50], ρ_in=0.05, ρ_out=0.1, v_in=2/60, d_rad=1e-6, c_in=0.05)
-    plot_eoc_h(3; nCells_list=[16,32,64,128,256], ρ_in=0.05, ρ_out=0.1, v_in=2/60, d_rad=1e-6, c_in=0.05)
-    plot_eoc_p(32; p_list=[5,20,40,50], ρ_in=0.05, ρ_out=0.1, v_in=2/60, d_rad=1e-6, c_in=0.05)
-end
-
-if abspath(PROGRAM_FILE) == abspath(@__FILE__) || isinteractive()
-    __main__()
+catch err
+    @warn "Plotting failed (Plots.jl not available?)." exception=(err, catch_backtrace())
 end
