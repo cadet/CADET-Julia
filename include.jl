@@ -25,7 +25,6 @@ using IncompleteLU
 # Include the Julia functions
 include(joinpath(rel_path,"src", "isotherms", "binding_base.jl"))
 include(joinpath(rel_path,"src", "DG", "model_base.jl"))
-include(joinpath(rel_path,"src", "DG", "radial_model_base.jl"))
 include(joinpath(rel_path,"src", "utils", "flow_rates.jl"))
 include(joinpath(rel_path,"src", "utils", "cstr.jl"))
 include(joinpath(rel_path,"src", "utils", "connections.jl"))
@@ -37,4 +36,6 @@ include(joinpath(rel_path,"src", "utils", "solver.jl"))
 include(joinpath(rel_path,"src", "utils", "solverDAE.jl"))
 include(joinpath(rel_path,"src", "isotherms", "Jacobians.jl"))
 include(joinpath(rel_path,"src", "DG", "conv_disp_operator_dg_jac.jl"))
+
+
 

@@ -2,9 +2,13 @@ module RadialConvDispOperatorDG
     using LinearAlgebra
     using CADETJulia: DGElements
 
-    @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _invWeights, _polyDerM, _invMM, _MM00, _MM01, _nodes, v, d_rad, cIn, c_star, g_star, Dg, _h, mul1, rho_i, rho_ip1, radial_v, left_scale_vec, right_scale_vec)
+    @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _invWeights, _polyDerM, _invMM, _MM00, _MM01, _nodes, v, d_rad, rho_i, rho_ip1, cIn, c_star, g_star, Dg, _h, mul1)
         fill!(Dg, 0.0)   # reset auxiliary buffer used to build g
         fill!(Dc, 0.0)   # reset residual accumulator for mobile phase
+
+		# diffusive face scales for comp j
+		left_scale  = rho_i .* d_rad
+		right_scale = rho_ip1 .* d_rad
 
         map = 2.0 / _deltarho
 
@@ -20,52 +24,51 @@ module RadialConvDispOperatorDG
         # g = (2/Δρ) * [ M^{-1}B(c* - c) - D c ]
         @. _h = map * Dg
 
-        # Auxiliary face flux g*
-        interfaceFluxCentral!(g_star, _h, 1, 1, _nNodes, _nCells)
+        interfaceFluxUpwind!(c_star, y, idx, _strideNode, _strideCell, _nCells, v, rho_i, cIn)
 
-        # Convective upwind flux c*
-        interfaceFluxUpwind!(c_star, y, idx, _strideNode, _strideCell, _nCells, radial_v, cIn)
+        # Auxiliary fluxes g*
+        interfaceFluxCentral!(g_star, _h, idx, _strideNode, _strideCell, _nCells)
 
-        # Surface term: B (v c*) - B_g (g*)
-        surfaceIntegral!(Dc, _nNodes, _nCells, c_star, g_star, left_scale_vec, right_scale_vec)
+        # Surface Integral: B (v c*) - B_g (g*)
+        surfaceIntegral!(Dc, _nNodes, _nCells, c_star, g_star, left_scale, right_scale)
 
-        # Volume term : Sᵀ (v c) - S_g g
-        volumeIntegral!(Dc, y, idx, _nCells, _nNodes, _polyDerM, _MM00, _MM01, radial_v, _h, mul1, rho_i, _deltarho, d_rad, _nodes, v, rho_i[1])        
+        # Volume Intergral: Sᵀ (v c) - S_g g
+        volumeIntegral!(Dc, y, idx, _nCells, _nNodes, _polyDerM, _MM00, _MM01, _h, mul1, rho_i, _deltarho, d_rad, _nodes, v)        
         
         @inbounds for Cell in 1:_nCells
             @views Dc[(Cell - 1) * _nNodes + 1 : Cell * _nNodes] = ( rho_i[Cell] .* _MM00 .+ (_deltarho/2) .* _MM01 ) \ Dc[(Cell - 1) * _nNodes + 1 : Cell * _nNodes]
         end
 
+        @. Dc = map * Dc
+
         return nothing
     end
 
-    # compute strong derivative - D c in ξ, precursor to g (Eq. 84b)
+    # compute strong derivative - D c in ξ, precursor to g
     @inline function volumeIntegraly!(state, idx, stateDer::Vector{Float64}, _nCells::Int64, _nNodes::Int64, _polyDerM::Matrix{Float64}, mul1::Vector{Float64})
+        base = first(idx)
         @inbounds for Cell in 1:_nCells
-            mul!(mul1, _polyDerM, @view(state[1 + (Cell-1) * _nNodes : _nNodes + (Cell-1) * _nNodes])) 
-            # @. stateDer[(1 + (Cell-1) * _nNodes) : (_nNodes + (Cell-1) * _nNodes)] -= mul1 #-D*c
-            broadcast!(-, @view(stateDer[1 + (Cell-1) * _nNodes : _nNodes + (Cell-1) * _nNodes]),@view(stateDer[(1 + (Cell-1) * _nNodes) : (_nNodes + (Cell-1) * _nNodes)]), mul1)
+            mul!(mul1, _polyDerM, @view(state[base + (Cell - 1) * _nNodes : base - 1 + Cell * _nNodes]))
+            cell_der = @view stateDer[1 + (Cell - 1) * _nNodes : Cell * _nNodes]
+            @. cell_der = cell_der - mul1
         end
         nothing
     end
 
     # Compute strong derivative of the Volume term: Dᵀ M(0,0) (v c) - S_g g
-    @inline function volumeIntegral!(Dc, y, idx, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _MM00::Matrix{Float64}, _MM01::Matrix{Float64}, radial_v::Vector{Float64}, g::Vector{Float64}, mul1::Vector{Float64}, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Float64, _nodes::Vector{Float64}, v_in::Float64, rho_inner::Float64)        
-        
-        @inbounds for Cell in 1:_nCells
+    @inline function volumeIntegral!(Dc, y, idx, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _MM00::Matrix{Float64}, _MM01::Matrix{Float64}, g::Vector{Float64}, mul1::Vector{Float64}, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Float64, _nodes::Vector{Float64}, v_in::Float64)
+        @inbounds @simd for Cell in 1:_nCells
             c_cell  = @view y[idx[1] + (Cell - 1) * _nNodes : idx[1] - 1 + Cell * _nNodes]
             g_cell  = @view g[1 + (Cell - 1) * _nNodes : Cell * _nNodes]
             Dc_cell = @view Dc[1 + (Cell - 1) * _nNodes : Cell * _nNodes]
-            
-            # convective volume: Sᵀ (v ∘ c)  with Sᵀ = Dᵀ * M(0,0)
-            # nodal radii in this cell: r(ξ) = ρ_i + (Δρ/2)*(1+ξ)
-            r_nodes = @. rho_i[Cell] + (_deltarho/2) * (1.0 + _nodes)
-            @. mul1 = (v_in * rho_inner) * (c_cell / r_nodes)   # elementwise
 
-            # convective volume: Sᵀ ( (v ∘ c) )
+            r_nodes = @. rho_i[Cell] + (_deltarho/2) * (1.0 + _nodes)
+            @. mul1 = (v_in * rho_i[1]) * (c_cell / r_nodes)
+
+            # convective volume: Sᵀ ( (v c) )
             tmp_conv = transpose(_polyDerM) * (_MM00 * mul1)
 
-            # diffusive volume: S_g g with S_g = Dᵀ * M_ρ * d_rad
+            # dispersion volume: S_g g with S_g = Dᵀ * M_ρ * d_rad
             tmp_diff = transpose(_polyDerM) * ( (rho_i[Cell] .* _MM00 .+ (_deltarho/2) .* _MM01) * (d_rad .* g_cell) )
             
             # Accumulate volume
@@ -87,32 +90,21 @@ module RadialConvDispOperatorDG
         nothing
     end
 
-    # Exact-Integration lifting of Surface Contribution += B (v c*) - B_g (g*)
+    # lifting of Surface -= B (v c*) - B_g (g*)
     @inline function surfaceIntegral!(Surf::Vector{Float64}, nNodes::Int, nCells::Int, c_star::Vector{Float64}, g_star::Vector{Float64}, left_scale::Vector{Float64}, right_scale::Vector{Float64})
-        @inbounds for Cell in 1:nCells
-            # endpoint indices for this cell
-            iL = (Cell - 1) * nNodes + 1
-            iR = Cell * nNodes
-            # convective: +B (v c*)
-            convL =  c_star[Cell]
-            convR = - c_star[Cell + 1]
-            # diffusive: - B_g (g*)
-            diffL = - (left_scale[Cell]  * g_star[Cell])
-            diffR = (right_scale[Cell] * g_star[Cell + 1])
-            # accumulate
-            Surf[iL] += (convL + diffL)
-            Surf[iR] += (convR + diffR)
+        @inbounds @simd for Cell in 1:nCells
+            # convective/diffusive accumulate: - (+B (v c*) - B_g (g*))
+            Surf[(Cell - 1) * nNodes + 1] -= ( - c_star[Cell] - (- left_scale[Cell] * g_star[Cell]))
+            Surf[Cell * nNodes] -= (c_star[Cell + 1] + (right_scale[Cell] * g_star[Cell + 1]))
         end
         return nothing
     end
 
-    # Auxiliary flux for g: c* = 0.5 (c_L + c_R)
+    # Auxiliary fluxes c* = 0.5 (c_L + c_R)
     @inline function interfaceFluxAuxiliary!(_surfaceFlux::Vector{Float64}, C, idx::UnitRange{Int}, strideNode::Int, strideCell::Int, nCells::Int)
         base = first(idx)
         @inbounds for Cell in 2:nCells
-                cL = C[base + (Cell - 1) * strideCell - strideNode]
-                cR = C[base + (Cell - 1) * strideCell]
-                _surfaceFlux[Cell] = 0.5 * (cL + cR)
+                _surfaceFlux[Cell] = 0.5 * (C[base + (Cell - 1) * strideCell - strideNode] + C[base + (Cell - 1) * strideCell])
             end
             # boundaries
             _surfaceFlux[1] = C[base]
@@ -120,41 +112,44 @@ module RadialConvDispOperatorDG
         return nothing
     end
 
-    # Upwind numerical flux for c:
-    @inline function interfaceFluxUpwind!(_surfaceFlux::Vector{Float64}, C, idx::UnitRange{Int}, strideNode::Int, strideCell::Int, nCells::Int, radial_v::Vector{Float64}, cIn::Float64, cOut::Float64 = NaN)
+    # Numerical fluxes (upwinding c*)
+    @inline function interfaceFluxUpwind!(_surfaceFlux::Vector{Float64}, C, idx::UnitRange{Int}, _strideNode::Int, _strideCell::Int, nCells::Int, v_in::Float64, rho_i::Vector{Float64}, cIn::Float64, cOut::Union{Nothing, Float64}=nothing)
         base = first(idx)
-        @inbounds begin
-            # interior faces
-            for cell in 2:nCells
-                v  = radial_v[cell]
-                cL = C[base + (cell - 1) * strideCell - strideNode]
-                cR = C[base + (cell - 1) * strideCell]
-                _surfaceFlux[cell] = v >= 0 ? v * cL : v * cR
-            end
-            # inlet
-            _surfaceFlux[1] = radial_v[1] >= 0 ? radial_v[1] * cIn : radial_v[1] * C[base]
-            # outlet
-            if radial_v[nCells + 1] >= 0
-                _surfaceFlux[nCells + 1] = radial_v[nCells + 1] * C[base + nCells * strideCell - strideNode]
+
+        # Interior faces: upwind based on local face velocity v_face = v_in * r_in / r_face
+        @inbounds for Cell in 2:nCells
+            v_face = v_in * rho_i[1] / rho_i[Cell]
+            if v_face >= 0
+                _surfaceFlux[Cell] = v_face * C[base + (Cell - 1) * _strideCell - _strideNode]
             else
-                _surfaceFlux[nCells + 1] = isnan(cOut) ? radial_v[nCells + 1] * C[base + nCells * strideCell - strideNode] : radial_v[nCells + 1] * cOut
+                _surfaceFlux[Cell] = v_face * C[base + (Cell - 1) * _strideCell]
             end
         end
+
+        if v_in >= 0
+            # inflow
+            _surfaceFlux[1] = v_in * cIn
+        else
+            # outflow
+            _surfaceFlux[1] = v_in * C[base]
+        end
+
+        # Outer boundary
+        if v_in * rho_i[1] / rho_i[nCells] >= 0
+            _surfaceFlux[nCells + 1] = v_in * rho_i[1] / rho_i[nCells] * C[base + nCells * _strideCell - _strideNode]
+        end
+
         return nothing
     end
 
-    # Central numerical flux of g (auxiliary trace g*)
-    @inline function interfaceFluxCentral!(_surfaceFlux, SRC, idx_start, strideNode, strideCell, nCells)
-        base = idx_start
-        @inbounds begin
-            for Cell in 2:nCells
-                gL = SRC[base + (Cell - 1) * strideCell - strideNode]
-                gR = SRC[base + (Cell - 1) * strideCell]
-                _surfaceFlux[Cell] = 0.5 * (gL + gR)
+    # Numerical fluxes (auxiliary central g*)
+    @inline function interfaceFluxCentral!(_surfaceFlux::Vector{Float64}, G, idx::UnitRange{Int}, strideNode::Int, strideCell::Int, nCells::Int)
+        base = first(idx)
+        @inbounds @simd for Cell in 2:nCells
+                _surfaceFlux[Cell] = 0.5 * (G[base + (Cell - 1) * strideCell - strideNode] + G[base + (Cell - 1) * strideCell])
             end
-            _surfaceFlux[1]          = SRC[base]
-            _surfaceFlux[nCells + 1] = SRC[base + nCells * strideCell - strideNode]
-        end
+            _surfaceFlux[1] = G[base]
+            _surfaceFlux[nCells + 1] = G[base + nCells * strideCell - strideNode]
         return nothing
     end
 
