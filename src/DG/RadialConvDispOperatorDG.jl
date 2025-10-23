@@ -142,4 +142,3 @@ module RadialConvDispOperatorDG
     end
 
 end
-    
