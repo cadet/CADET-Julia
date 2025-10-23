@@ -1,6 +1,7 @@
 
 
 function create_units(model::Union{Dict, OrderedDict})
+    
     units = Dict{String, Any}()
     inlets = []
     columns = []
@@ -239,14 +240,14 @@ function create_units(model::Union{Dict, OrderedDict})
 			source = units[sourceID]
 			sink = units[sinkID]
 
-			# Setting velocity 
 			if typeof(sink)<:ModelBase # if sink is column 
-				# if both cross sectional area is given, infer via volumetric flowrate
-				if haskey(model["root"]["input"]["model"][sinkID],"cross_section_area")
-					u = connectionMatrix[j, 5]/(model["root"]["input"]["model"][sinkID]["cross_section_area"]*sink.eps_c) 
-				else
-					u = model["root"]["input"]["model"][sinkID]["velocity"]
-				end
+                # Setting velocity 
+                # if both cross sectional area is given, infer via volumetric flowrate
+                if haskey(model["root"]["input"]["model"][sinkID],"cross_section_area")
+                    u = connectionMatrix[j, 5]/(model["root"]["input"]["model"][sinkID]["cross_section_area"]*sink.eps_c) 
+                else
+                    u = model["root"]["input"]["model"][sinkID]["velocity"]
+                end
 
 				# As sink is a column, the column number is needed 
 				idx = findfirst(x -> x == sinkID, columnIDs)
@@ -275,14 +276,12 @@ function create_units(model::Union{Dict, OrderedDict})
 			# if sink is createOutlet, the source must be from a column 
 			# Hence we need the right column
 			if typeof(sink) == CreateOutlet
+                u = connectionMatrix[j,5]
+                
 				# if sink is createOutlet, the source must be from a column 
 				# Hence we need the right column 
 				idx = findfirst(x -> x == sourceID, columnIDs)
 				source = columnNumber[idx]
-				# if outlet is specified as sink, the velocity does not matter. 
-				# hence an arbitrary value is assigned 
-
-				u = 0.1 # value not used anyway if outlets are sinks 
 			end
 
 			# if dynamic flow is activated and matrix is specified 
@@ -409,7 +408,29 @@ function get_bind(value,bindstride)
 end
 
 
+"""
+create_units(model::HDF5.File)
 
+Constructs and initializes the simulation units (inlets, outlets, columns) from a CADET HDF5 file.
+
+# Arguments
+- `model::HDF5.File`: Opened CADET HDF5 file.
+
+# Returns
+A tuple `(inlets, outlets, columns, switches, solverOptions)` where:
+- `inlets`: Tuple of inlet unit objects.
+- `outlets`: Tuple of outlet unit objects.
+- `columns`: Tuple of column unit objects (e.g., LRM, LRMP, GRM, cstr).
+- `switches`: Switches object containing section and connection information.
+- `solverOptions`: SolverCache object with solver configuration and initial conditions.
+
+# Details
+- Parses the model structure to instantiate all units and their connections.
+- Handles different unit types (INLET, OUTLET, LRM, LRMP, GRM, cstr).
+- Sets up connections, flow rates, and initial conditions.
+- Configures solver tolerances and time points.
+
+"""
 function create_units(model::HDF5.File)
     units = Dict{String, Any}()
     inlets = []
@@ -507,28 +528,6 @@ function create_units(model::HDF5.File)
                                     cross_section_area = haskey(value, "CROSS_SECTION_AREA") ? read(value["CROSS_SECTION_AREA"]) : 1.0 # 
 									)
 				column_instance.bind = get_bind(read(value),column_instance.bindStride)
-                push!(columns, column_instance)
-                # Assign ID and number in columns
-                push!(columnNumber, length(columnNumber)+1)
-                push!(columnIDs, unit_name)
-                units[unit_name] = column_instance
-
-            elseif unit_type == "RADIAL_LUMPED_RATE_MODEL_WITHOUT_PORES"
-                # Create column instance
-                # Replace the following line with your column instantiation logic
-                column_instance = rLRM(nComp = value["ncomp"], 
-				    				col_inner_radius = value["col_inner_radius"]/1.0, 
-                                    col_outer_radius = value["col_outer_radius"]/1.0, 
-					    			d_rad = value["col_dispersion"]./1.0, 
-				    	    		eps_c = value["col_porosity"]/1.0, 
-							    	c0 = value["init_c"], 
-							    	q0 = value["init_q"],
-								    # save_output = true, # defaults to true
-								    polyDeg = value["discretization"]["polyDeg"], # defaults to 4
-							    	nCells = value["discretization"]["ncol"], # defaults to 8
-                                    cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
-				    				)
-				column_instance.bind = get_bind(value,column_instance.bindStride)
                 push!(columns, column_instance)
                 # Assign ID and number in columns
                 push!(columnNumber, length(columnNumber)+1)
