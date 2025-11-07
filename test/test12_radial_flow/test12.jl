@@ -1,70 +1,114 @@
-
+# Pulse Injection Test for Radial Flow
+#
+# Simple test: Inject c=1.0 for 1 second into an empty column
+#
+# Timeline:
+#   t = 0→1s: Inject c=1.0 (pulse)
+#   t = 1→2s: Inject c=0.0 (wash)
 
 using CADETJulia
 using Printf
 
-# ------------------ User knobs ------------------
-ncomp  = 1
-c0     = 1.0          # inlet concentration during pulse
-tinj   = 60.0         # pulse duration [s]
-tend   = 130.0        # final time [s]
-rin, rout = 0.005, 0.01
-D_rad  = 1.0e-8
-εc     = 0.40
-polyDeg, nCells = 4, 40
-u_in   = 1.0e-4       # superficial velocity at inner radius [m/s]
+println("=" ^ 70)
+println("PULSE INJECTION TEST - RADIAL FLOW")
+println("=" ^ 70)
+println()
 
+# ==================== TEST PARAMETERS ====================
+ncomp  = 1          # Single component
+c_pulse = 1.0       # Pulse concentration
+tinj = 1.0          # Injection duration: 0 → 1 second
+tend = 1.1          # Total time: 0 → 2 seconds
+
+# Geometry
+rin = 0.01         # Inner radius [m]
+rout = 0.2         # Outer radius [m]
+
+# Physical properties
+D_rad = 1.0e-8      # Radial dispersion coefficient [m²/s]
+εc = 1.0            # Porosity (1.0 = no particles, pure mobile phase)
+
+# Discretization
+polyDeg = 4         # Polynomial degree
+nCells = 16          # Number of cells
+
+# Flow
+u_in = 1.0e-5       # Inlet velocity [m/s]
+
+# Solver tolerances
 abstol = 1.0e-10
 reltol = 1.0e-8
-Δtout  = 0.5
+Δtout = 0.1         # Output every 0.1 seconds
 
-# ------------------ Build units manually ------------------
-# Column (radial LRM)
-col = CADETJulia.rLRM(nComp = ncomp, col_inner_radius = rin, col_outer_radius = rout, d_rad = fill(D_rad, ncomp), eps_c = εc, c0 = fill(0.0, ncomp), q0 = fill(0.0, ncomp), polyDeg = polyDeg, nCells = nCells, cross_section_area = 1.0,)
+# ==================== BUILD MODEL ====================
 
-# Inlet with 2 sections (pulse then wash)
+# Column: Start with empty column (c=0 everywhere)
+col = CADETJulia.rLRM(
+    nComp = ncomp,
+    col_inner_radius = rin,
+    col_outer_radius = rout,
+    d_rad = fill(D_rad, ncomp),
+    eps_c = εc,
+    c0 = fill(0.0, ncomp),  # Empty initial condition
+    q0 = fill(0.0, ncomp),
+    polyDeg = polyDeg,
+    nCells = nCells,
+    cross_section_area = 1.0,
+)
+
+# Inlet: 2 sections (pulse, then wash)
 inlet = CADETJulia.CreateInlet(nComp = ncomp, nSections = 2)
-CADETJulia.modify_inlet!(inlet = inlet,nComp = ncomp,section = 1,cIn_c = fill(c0, ncomp),cIn_l = zeros(ncomp),cIn_q = zeros(ncomp),cIn_cube = zeros(ncomp),)
-CADETJulia.modify_inlet!(inlet = inlet,
-    nComp = ncomp,section = 2,                 # section 2: t ∈ [tinj, tend]
-    cIn_c = fill(0.0, ncomp),
-    cIn_l = zeros(ncomp),cIn_q = zeros(ncomp),cIn_cube = zeros(ncomp),)
+
+# Section 1: Pulse (t = 0 → tinj)
+CADETJulia.modify_inlet!(
+    inlet = inlet,
+    nComp = ncomp,
+    section = 1,
+    cIn_c = fill(c_pulse, ncomp),  # Inject c=1.0
+    cIn_l = zeros(ncomp),
+    cIn_q = zeros(ncomp),
+    cIn_cube = zeros(ncomp),
+)
+
+# Section 2: Wash (t = tinj → tend)
+CADETJulia.modify_inlet!(
+    inlet = inlet,
+    nComp = ncomp,
+    section = 2,
+    cIn_c = fill(0.0, ncomp),  # Inject c=0.0
+    cIn_l = zeros(ncomp),
+    cIn_q = zeros(ncomp),
+    cIn_cube = zeros(ncomp),
+)
 
 # Outlet
 outlet = CADETJulia.CreateOutlet(nComp = ncomp)
 
-# ------------------ Switching & connections ------------------
-# idx_units offsets: for a single column, it starts at 0
+# ==================== SWITCHES & CONNECTIONS ====================
 idx_units = [0]
 
-switches = CADETJulia.Switches(nSections = 2,section_times = [0.0, tinj, tend],nSwitches = 1,nColumns = 1,nComp = ncomp,idx_units = idx_units,)
-
-# Register connections
-# 1) INLET (unit_000) -> COLUMN (column index 1). For columns, the 5th arg is velocity u
-CADETJulia.Connection(
-    switches,           # switches object to mutate
-    1,                  # switch index (1-based)
-    1,                  # section index (1: applies to both unless you add more switches)
-    inlet,              # source (inlet instance)
-    1,                  # sink (column number in [1..nColumns])
-    u_in,               # superficial velocity at inner face; radial profile handled internally
-    0.0, 0.0, 0.0, 0.0, # dynamic flow coeffs (unused)
-    false,              # dynamic_flow_check
+switches = CADETJulia.Switches(
+    nSections = 2,
+    section_times = [0.0, tinj, tend],
+    nSwitches = 1,
+    nColumns = 1,
+    nComp = ncomp,
+    idx_units = idx_units,
 )
 
-# 2) COLUMN -> OUTLET. For outlets, the value is ignored
+# Connect INLET → COLUMN
 CADETJulia.Connection(
-    switches,
-    1,
-    1,
-    1,                  # source (column number)
-    outlet,             # sink (outlet instance)
-    0.0,
-    0.0, 0.0, 0.0, 0.0,
-    false,
+    switches, 1, 1, inlet, 1,
+    u_in, 0.0, 0.0, 0.0, 0.0, false
 )
 
-# ------------------ Solver options ------------------
+# Connect COLUMN → OUTLET
+CADETJulia.Connection(
+    switches, 1, 1, 1, outlet,
+    0.0, 0.0, 0.0, 0.0, 0.0, false
+)
+
+# ==================== SOLVER OPTIONS ====================
 solverOptions = CADETJulia.SolverCache(
     columns = (col,),
     switches = switches,
@@ -76,49 +120,64 @@ solverOptions = CADETJulia.SolverCache(
     analyticalJacobian = false,
 )
 
-# ------------------ Solve ------------------
-sol = CADETJulia.solve_model(columns=(col,), switches=switches, outlets=(outlet,), solverOptions=solverOptions)
+# ==================== SOLVE ====================
+println("=" ^ 70)
+println("RUNNING SIMULATION")
+println("=" ^ 70)
+println("Solving from t=0 to t=$tend seconds...")
+println()
 
-# ------------------ Report outlet ------------------
-# The column struct stores outlet trace & times; print quick summary
-@printf("\nPulse injection run finished.\n")
-@printf("  tinj = %.3f s, u_in = %.3e m/s, D_rad = %.3e m^2/s\n", tinj, u_in, D_rad)
+sol = CADETJulia.solve_model(
+    columns = (col,),
+    switches = switches,
+    outlets = (outlet,),
+    solverOptions = solverOptions
+)
 
+println("✓ Simulation completed!")
 
+println("=" ^ 70)
+println()
 
-# If available, dump last few samples
+# ==================== RESULTS ====================
+println("=" ^ 70)
+println("OUTLET CONCENTRATION")
+println("=" ^ 70)
+
 if !isempty(col.solution_times)
-    nt = length(col.solution_times)
-    nshow = min(nt, 400)
-    @printf("\nLast %d samples at outlet (time, c_out):\n", nshow)
-    for k in (nt - nshow + 1):nt
+    println("\nOutlet concentration vs time:")
+    println("-" ^ 70)
+    @printf("%10s  %20s\n", "Time [s]", "c_out")
+    println("-" ^ 70)
+
+    for k in 1:length(col.solution_times)
         t = col.solution_times[k]
-        c = col.solution_outlet[k, 1]  # first component
-        @printf("  %10.3f  %14.6e\n", t, c)
+        c = col.solution_outlet[k, 1]
+        @printf("%10.3f  %20.10e\n", t, c)
     end
+
+    println("-" ^ 70)
+
+    # Summary statistics
+    c_max = maximum(col.solution_outlet[:, 1])
+    c_min = minimum(col.solution_outlet[:, 1])
+    c_mean = sum(col.solution_outlet[:, 1]) / length(col.solution_outlet[:, 1])
+
+    println("\nSummary:")
+    @printf("  Maximum outlet concentration: %.6e\n", c_max)
+    @printf("  Minimum outlet concentration: %.6e\n", c_min)
+    @printf("  Mean outlet concentration:    %.6e\n", c_mean)
+    @printf("  Expected pulse height:        %.6e\n", c_pulse)
+
+    if abs(c_max - c_pulse) > 0.1 * c_pulse
+        println("\n⚠️  WARNING: Outlet concentration differs from expected!")
+        println("   This may indicate a problem with the discretization.")
+    end
+else
+    println("❌ ERROR: No solution data available!")
 end
 
-
-#############################################
-# Plot outlet concentration for [0,60,130] #
-#############################################
-try
-    @eval begin
-        using Plots
-    end
-    tmin, tmid, tmax = 0.0, 60.0, 130.0
-    mask = (col.solution_times .>= tmin) .& (col.solution_times .<= tmax)
-    plt = plot(
-        col.solution_times[mask],
-        col.solution_outlet[mask, 1],
-        xlabel = "Time [s]",
-        ylabel = "Outlet concentration",
-        title = "Radial column pulse elution (sections: [0,60,130])",
-        legend = false,
-        lw = 2,
-    )
-    vline!([tmin, tmid, tmax], l = (:dash, 1))
-    display(plt)
-catch err
-    @warn "Plotting failed (Plots.jl not available?)." exception=(err, catch_backtrace())
-end
+println()
+println("=" ^ 70)
+println("TEST COMPLETE")
+println("=" ^ 70)
