@@ -77,8 +77,9 @@ mutable struct RadialConvDispOp
 	nodes::Vector{Float64}
     invWeights::Vector{Float64}
     invMM::Matrix{Float64}
-	MM00::Matrix{Float64}
-	MM01::Matrix{Float64}
+	MM::Matrix{Float64}
+	rMM::Vector{Matrix{Float64}}
+	invrMM::Vector{Matrix{Float64}}
 	polyDerM::Matrix{Float64}
     deltarho::Float64
     rho_i::Vector{Float64}
@@ -103,10 +104,10 @@ mutable struct RadialConvDispOp
 		rho_i  = [col_inner_radius + (cell - 1 ) * deltarho for cell in 1:(nCells + 1)] # face radii
 
 		# Obtain LGL nodes and weights
-		nodes, invWeights = DGElements.lglnodes(polyDeg) #LGL nodes & weights
+		nodes, invWeights = DGElements.lgnodes(polyDeg) #LGL nodes & weights
 		invMM = DGElements.invMMatrix(nodes, polyDeg) #Inverse mass matrix
-		MM00 = DGElements.MMatrix(nodes, polyDeg)
-		MM01 = DGElements.MMatrix(nodes, polyDeg, 0, 1)
+		MM = DGElements.MMatrix(nodes, polyDeg)
+		rMM, invrMM = DGElements.weightedMMatrix(nodes, polyDeg, rho_i, deltarho) # hatrho weighted mass matrix and its inverse
 		polyDerM = DGElements.derivativeMatrix(polyDeg, nodes) #derivative matrix
 
 		# allocation vectors and matrices
@@ -117,7 +118,7 @@ mutable struct RadialConvDispOp
 		Dg = zeros(Float64, nPoints)
 		h = zeros(Float64, nPoints)
 
-		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, invWeights, invMM, MM00, MM01, polyDerM, deltarho, rho_i, mul1, c_star, g_star, Dc, Dg, h)
+		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, invWeights, invMM, MM, rMM, invrMM, polyDerM, deltarho, rho_i, mul1, c_star, g_star, Dc, Dg, h)
 	end
 end
 
@@ -542,10 +543,10 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 
 		# Convection Dispersion term
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp]
-		RadialConvDispOperatorDG.radialresidualImpl!(m.ConvDispOpInstance.Dc, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nNodes, m.ConvDispOpInstance.nCells, m.ConvDispOpInstance.deltarho, m.polyDeg, m.ConvDispOpInstance.invWeights, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.ConvDispOpInstance.MM00, m.ConvDispOpInstance.MM01, m.ConvDispOpInstance.nodes, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_rad[j], m.ConvDispOpInstance.rho_i, m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.g_star, m.ConvDispOpInstance.Dg, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1)
+		RadialConvDispOperatorDG.radialresidualImpl!(m.ConvDispOpInstance.Dc, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nNodes, m.ConvDispOpInstance.nCells, m.ConvDispOpInstance.deltarho, m.polyDeg, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.ConvDispOpInstance.MM, m.ConvDispOpInstance.rMM, m.ConvDispOpInstance.invrMM, m.ConvDispOpInstance.nodes, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_rad[j], m.ConvDispOpInstance.rho_i, m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.g_star, m.ConvDispOpInstance.Dg, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1)
 		
 		# Mobile phase RHS 
-		@views RHS[m.idx .+ idx_units[sink]] .= m.ConvDispOpInstance.Dc - m.Fc * RHS_q[m.idx]
+		@views RHS[m.idx .+ idx_units[sink]] .= m.ConvDispOpInstance.Dc
 	end
 	
     nothing

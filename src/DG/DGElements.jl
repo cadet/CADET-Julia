@@ -54,7 +54,51 @@ function lglnodes(N)
     end
 
     w = 2 ./(N .* N1 .* P[:, N1].^2)
-    
+
+    return reverse(x), 1 ./ w
+end
+
+#LG nodes and weights (Algorithm 23 from Kopriva - Implementing Spectral Methods for PDEs)
+function lgnodes(N)
+    # Number of nodes
+    N1 = N + 1
+
+    # Use Chebyshev-Gauss nodes as initial guess
+    # For LG nodes, we don't include endpoints, so we use interior Chebyshev nodes
+    x = -cos.((2 .* (1:N1) .- 1) .* pi ./ (2 * N1))
+
+    # Storage for Legendre polynomials
+    P = zeros(N1, 3)  # We only need current, previous, and next polynomials
+
+    # Newton-Raphson iteration to find roots of P_N1
+    xold = ones(length(x)) .* 2.0
+
+    while maximum(abs.(x .- xold)) > eps()
+        xold[:] = x
+
+        # Initialize P_0 and P_1
+        P[:, 1] .= 1.0
+        P[:, 2] = x
+
+        # Compute P_N1(x) using three-term recurrence relation
+        for k = 2:N
+            P[:, 3] = ((2 * k - 1) .* x .* P[:, 2] - (k - 1) .* P[:, 1]) ./ k
+            P[:, 1] = P[:, 2]
+            P[:, 2] = P[:, 3]
+        end
+
+        # Newton-Raphson update: x_new = x_old - P_N1(x) / P'_N1(x)
+        # Using the relation: P'_N1(x) = N1 * (x * P_N1(x) - P_N(x)) / (x^2 - 1)
+        # which simplifies to: P'_N1(x) = N1 / (1 - x^2) * (x * P_N1(x) - P_N(x))
+        dP = N1 .* (x .* P[:, 3] - P[:, 1]) ./ (x.^2 .- 1.0)
+        x[:] = xold - P[:, 3] ./ dP
+    end
+
+    # Compute weights using: w_i = 2 / ((1 - x_i^2) * [P'_N1(x_i)]^2)
+    # We use the derivative formula from the iteration
+    dP = N1 .* (x .* P[:, 3] - P[:, 1]) ./ (x.^2 .- 1.0)
+    w = 2.0 ./ ((1.0 .- x.^2) .* dP.^2)
+
     return reverse(x), 1 ./ w
 end
     w = 2 ./(N .* N1 .* P[:, N1].^2)
@@ -532,5 +576,25 @@ end
         return Transpose(derivativeMatrix(_polyDeg,_nodes)) * weightedQuadrature(_nodes, rho_i, _deltarho, hatrho -> hatrho .* weight.(hatrho))
     end
 
+# hatrho Weighted mass matrix and its inverse
+function weightedMMatrix(_nodes,_polyDeg, rho_i::Vector{Float64}, _deltarho::Float64)
+    # Precompute base mass matrices once
+    M00 = MMatrix(_nodes, _polyDeg, 0, 0)
+    M01 = MMatrix(_nodes, _polyDeg, 0, 1)
+
+    # Compute weighted mass matrix and its inverse for each cell
+    nCells = length(rho_i) - 1  # rho_i has nCells+1 face values
+    rMM = Vector{Matrix{Float64}}(undef, nCells)
+    invRMM = Vector{Matrix{Float64}}(undef, nCells)
+
+    for Cell in 1:nCells
+        # M_ρ = ρ_i * M(0,0) + (Δρ/2) * M(0,1)
+        rMM[Cell] = rho_i[Cell] .* M00 .+ (_deltarho/2) .* M01
+        # Precompute inverse: M_ρ^{-1}
+        invRMM[Cell] = inv(rMM[Cell])
+    end
+
+    return rMM, invRMM
+end
 
 end
