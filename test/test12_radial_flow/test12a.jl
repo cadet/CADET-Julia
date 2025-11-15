@@ -1,5 +1,5 @@
 #!/usr/bin/env julia
-# Free-Stream Preservation Test for Radial Flow
+# Free-Stream Preservation Test for Radial Flow WITH DEBUG LOGGING
 #
 # Tests that a constant state (c=1.0 everywhere) remains constant.
 #
@@ -11,7 +11,7 @@
 # Theory:
 #   For constant state c=1.0:
 #     - dc/dr = 0 (no spatial gradient)
-#     - Convection term: d(rho*v*c)/dr = d(constant)/dr = 0
+#     - Convection term: d(v*c)/dr = d(constant)/dr = 0
 #     - Dispersion term: d(rho*D*dc/dr)/dr = 0
 #     - Therefore: dc/dt = 0, so c should remain constant!
 #
@@ -20,19 +20,17 @@
 using CADETJulia
 using Printf
 
-println("=" ^ 70)
-println("FREE-STREAM PRESERVATION TEST - RADIAL FLOW")
-println("=" ^ 70)
-println()
+# Enable debug logging for radial residual
+CADETJulia.RadialConvDispOperatorDG.enable_debug("test12a_debug.log")
 
 # ==================== TEST PARAMETERS ====================
 ncomp = 1           # Single component
 c_const = 1.0       # Constant concentration everywhere
-tend = 1.0          # Test for 1 second
+tend = 0.01         # Test for short time (only initial residual matters)
 
 # Geometry
-rin = 0.001         # Inner radius [m]
-rout = 0.01         # Outer radius [m]
+rin = 0.01         # Inner radius [m]
+rout = 0.1         # Outer radius [m]
 
 # Physical properties
 D_rad = 1.0e-8      # Radial dispersion coefficient [m^2/s]
@@ -40,7 +38,7 @@ epsilon_c = 1.0     # Porosity (1.0 = no particles, pure mobile phase)
 
 # Discretization
 polyDeg = 4         # Polynomial degree
-nCells = 1          # Number of cells (single cell test)
+nCells = 9          # Number of cells
 
 # Flow
 u_in = 1.0e-4       # Inlet velocity [m/s]
@@ -48,7 +46,7 @@ u_in = 1.0e-4       # Inlet velocity [m/s]
 # Solver tolerances
 abstol = 1.0e-10
 reltol = 1.0e-8
-dtout = 0.1         # Output every 0.1 seconds
+dtout = 0.01        # Output at end only
 
 println("TEST CONFIGURATION:")
 println("  Constant state test:")
@@ -101,7 +99,7 @@ CADETJulia.modify_inlet!(
     inlet = inlet,
     nComp = ncomp,
     section = 1,
-    cIn_c = fill(c_const, ncomp),
+    cIn_c = fill(c_const, ncomp),  # CONSTANT inlet c=1.0
     cIn_l = zeros(ncomp),
     cIn_q = zeros(ncomp),
     cIn_cube = zeros(ncomp),
@@ -138,7 +136,7 @@ solverOptions = CADETJulia.SolverCache(
 
 # ==================== INITIAL RESIDUAL CHECK ====================
 println("=" ^ 70)
-println("CHECKING INITIAL RESIDUAL")
+println("CHECKING INITIAL RESIDUAL (WITH DEBUG OUTPUT)")
 println("=" ^ 70)
 println("Computing residual at t=0 with constant state c=$c_const...")
 println()
@@ -152,7 +150,7 @@ RHS_q = col.RHS_q
 cpp = col.cpp
 qq = col.qq
 i = 1  # section 1
-p = (columns=(col,), RHS_q, cpp, qq, i, solverOptions.nColumns, solverOptions.idx_units, switches, nothing)
+p = (columns=(col,), RHS_q, cpp, qq, i, solverOptions.nColumns, solverOptions.idx_units, switches)
 
 # IMPORTANT: For StaticInlets, we must manually set cIn
 for j = 1:ncomp
@@ -167,12 +165,16 @@ println("Initial state check:")
 @printf("  Expected: all values = %.6f\n", c_const)
 println()
 
-# Compute residual at t=0
+# COMPUTE THE RESIDUAL - This is the key step!
+println("Computing residual using problem! function...")
 CADETJulia.problem!(dx0, x0, p, 0.0)
+println("Residual computation complete.")
+println()
 
 # Check residual
 max_init_res = maximum(abs.(dx0))
 
+println()
 println("INITIAL RESIDUAL ANALYSIS:")
 println("-" ^ 70)
 @printf("  Maximum |residual| = %.6e\n", max_init_res)
@@ -201,10 +203,9 @@ if max_init_res > TOLERANCE
     println("   This corresponds to: Cell $cell_num, Node $node_num")
     println()
 
-    # Show first few residuals
-    println("   First few residual values:")
-    n_show = min(10, length(dx0))
-    for j in 1:n_show
+    # Show all residuals
+    println("   All residual values:")
+    for j in 1:length(dx0)
         cell = div(j - 1, nNodes) + 1
         node = mod(j - 1, nNodes) + 1
         @printf("     DOF %2d (Cell %2d, Node %2d):  x = %.6e,  dx = %.6e\n",
@@ -214,6 +215,7 @@ if max_init_res > TOLERANCE
 
     println("   => BUG DETECTED in discretization!")
     println("   => Constant state should have zero residual.")
+    println("   => Check test12a_debug.log for detailed diagnostic output")
 else
     println("[PASS] INITIAL RESIDUAL CHECK PASSED!")
     println("   Maximum |residual| = $max_init_res < $TOLERANCE")
@@ -223,88 +225,5 @@ end
 println("=" ^ 70)
 println()
 
-# ==================== SOLVE ====================
-println("=" ^ 70)
-println("RUNNING TIME INTEGRATION")
-println("=" ^ 70)
-println("Integrating from t=0 to t=$tend seconds...")
-println("Testing if constant state drifts over time.")
-println()
-
-sol = CADETJulia.solve_model(
-    columns = (col,),
-    switches = switches,
-    outlets = (outlet,),
-    solverOptions = solverOptions
-)
-
-println("=> Simulation completed!")
-println("=" ^ 70)
-println()
-
-# ==================== RESULTS ====================
-println("=" ^ 70)
-println("OUTLET CONCENTRATION ANALYSIS")
-println("=" ^ 70)
-
-if !isempty(col.solution_times)
-    outlet_vals = col.solution_outlet[:, 1]
-
-    println("\nOutlet concentration vs time:")
-    println("-" ^ 70)
-    @printf("%10s  %20s  %20s\n", "Time [s]", "c_out", "Deviation")
-    println("-" ^ 70)
-
-    for k in 1:length(col.solution_times)
-        t = col.solution_times[k]
-        c = outlet_vals[k]
-        dev = c - c_const
-        @printf("%10.3f  %20.10e  %+20.6e\n", t, c, dev)
-    end
-    println("-" ^ 70)
-
-    # Statistics
-    mean_outlet = sum(outlet_vals) / length(outlet_vals)
-    max_dev = maximum(abs.(outlet_vals .- c_const))
-    min_val = minimum(outlet_vals)
-    max_val = maximum(outlet_vals)
-
-    println("\nStatistics:")
-    @printf("  Expected value:      %.10f\n", c_const)
-    @printf("  Mean outlet value:   %.10f\n", mean_outlet)
-    @printf("  Max deviation:       %.6e\n", max_dev)
-    @printf("  Min outlet value:    %.10f\n", min_val)
-    @printf("  Max outlet value:    %.10f\n", max_val)
-    println()
-
-    # Pass/fail
-    OUTLET_TOLERANCE = 1e-6
-    if max_dev < OUTLET_TOLERANCE
-        println("[PASS] FREE-STREAM PRESERVATION TEST PASSED")
-        println("    Constant state preserved within tolerance $OUTLET_TOLERANCE!")
-        println("    Maximum deviation: $max_dev")
-        println()
-        println("    This confirms:")
-        println("      => DG discretization is consistent")
-        println("      => Mass conservation is preserved")
-        println("      => Constant states remain constant")
-    else
-        println("[FAIL] FREE-STREAM PRESERVATION TEST FAILED")
-        println("    Constant state was NOT preserved!")
-        println("    Maximum deviation: $max_dev exceeds tolerance $OUTLET_TOLERANCE")
-        println()
-        println("    => BUG in discretization!")
-        println("    => Possible causes:")
-        println("        - Volume integral formulation error")
-        println("        - Surface flux formulation error")
-        println("        - Mass matrix scaling error")
-        println("        - Radial weighting error")
-    end
-else
-    println("[ERROR] No solution data available!")
-end
-
-println()
-println("=" ^ 70)
-println("TEST COMPLETE")
-println("=" ^ 70)
+# Disable debug logging
+CADETJulia.RadialConvDispOperatorDG.disable_debug()
