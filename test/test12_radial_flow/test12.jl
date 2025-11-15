@@ -25,8 +25,24 @@ rin = 0.01         # Inner radius [m]
 rout = 0.2         # Outer radius [m]
 
 # Physical properties
-D_rad = 1.0e-8      # Radial dispersion coefficient [m²/s]
+# Define radial dispersion coefficient as a function of radius r [m]
+# Example: D_rad(r) = D0 * (1 + α*r) - increases linearly with radius
+D0 = 1.0e-8         # Base dispersion coefficient [m²/s]
+α = 2.0             # Scaling factor [1/m]
+D_rad_func(r) = D0 * (1.0 + α * r)  # Variable dispersion coefficient
+# Alternatively, use constant: D_rad = 1.0e-8
 εc = 1.0            # Porosity (1.0 = no particles, pure mobile phase)
+
+# Display dispersion coefficient information
+println("Variable Dispersion Coefficient:")
+println("  D_rad(r) = D0 * (1 + α*r)")
+println("  D0 = $D0 m²/s")
+println("  α = $α 1/m")
+println()
+@printf("  D_rad(r_inner=%.4f m) = %.6e m²/s\n", rin, D_rad_func(rin))
+@printf("  D_rad(r_mid=%.4f m) = %.6e m²/s\n", (rin+rout)/2, D_rad_func((rin+rout)/2))
+@printf("  D_rad(r_outer=%.4f m) = %.6e m²/s\n", rout, D_rad_func(rout))
+println()
 
 # Discretization
 polyDeg = 4         # Polynomial degree
@@ -43,11 +59,12 @@ reltol = 1.0e-8
 # ==================== BUILD MODEL ====================
 
 # Column: Start with empty column (c=0 everywhere)
+# Use variable dispersion coefficient function
 col = CADETJulia.rLRM(
     nComp = ncomp,
     col_inner_radius = rin,
     col_outer_radius = rout,
-    d_rad = fill(D_rad, ncomp),
+    d_rad = D_rad_func,  # Pass function for variable dispersion
     eps_c = εc,
     c0 = fill(0.0, ncomp),  # Empty initial condition
     q0 = fill(0.0, ncomp),
