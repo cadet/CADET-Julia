@@ -55,6 +55,7 @@ function lglnodes(N)
 
     w = 2 ./(N .* N1 .* P[:, N1].^2)
 
+
     return reverse(x), 1 ./ w
 end
 
@@ -68,7 +69,7 @@ function lgnodes(N)
     x = -cos.((2 .* (1:N1) .- 1) .* pi ./ (2 * N1))
 
     # Storage for Legendre polynomials
-    P = zeros(N1, 3)  # We only need current, previous, and next polynomials
+    P = zeros(N1, N1)  # We only need current, previous, and next polynomials
 
     # Newton-Raphson iteration to find roots of P_N1
     xold = ones(length(x)) .* 2.0
@@ -398,6 +399,70 @@ function derivativeMatrix(_polyDeg,_nodes)
     return _polyDerM
 end
 
+# @brief computation of extrapolation operators for LG nodes to boundaries
+# Returns: (extrap_left, extrap_right) where extrap_left extrapolates to ξ=-1, extrap_right to ξ=+1
+# Usage: u(-1) ≈ extrap_left ⋅ u(nodes), u(+1) ≈ extrap_right ⋅ u(nodes)
+function extrapolationOperatorsLG(_polyDeg, _nodes)
+    N = _polyDeg + 1
+
+    # Build Vandermonde matrix at the nodes
+    V = zeros(Float64, N, N)
+
+    for i in 1:N
+        x = _nodes[i]
+
+        # Initialize with P_0 and P_1
+        P_prev = 1.0
+        P_curr = x
+
+        V[i, 1] = P_prev
+        V[i, 2] = P_curr
+
+        # Use recurrence relation for higher degrees
+        for n in 2:_polyDeg
+            P_next = ((2*n - 1) * x * P_curr - (n - 1) * P_prev) / n
+            V[i, n+1] = P_next
+            P_prev = P_curr
+            P_curr = P_next
+        end
+    end
+
+    # Evaluate Legendre polynomials at boundaries ξ = -1 and ξ = +1
+    V_left = zeros(Float64, N)   # Legendre polynomials at ξ = -1
+    V_right = zeros(Float64, N)  # Legendre polynomials at ξ = +1
+
+    # At ξ = -1
+    P_prev = 1.0
+    P_curr = -1.0
+    V_left[1] = P_prev
+    V_left[2] = P_curr
+    for n in 2:_polyDeg
+        P_next = ((2*n - 1) * (-1.0) * P_curr - (n - 1) * P_prev) / n
+        V_left[n+1] = P_next
+        P_prev = P_curr
+        P_curr = P_next
+    end
+
+    # At ξ = +1
+    P_prev = 1.0
+    P_curr = 1.0
+    V_right[1] = P_prev
+    V_right[2] = P_curr
+    for n in 2:_polyDeg
+        P_next = ((2*n - 1) * (1.0) * P_curr - (n - 1) * P_prev) / n
+        V_right[n+1] = P_next
+        P_prev = P_curr
+        P_curr = P_next
+    end
+
+    # Extrapolation operators: V_boundary * inv(V)
+    # This gives the weights to combine nodal values to get boundary value
+    extrap_left = V_left' / V    # Row vector: weights for extrapolation to ξ=-1
+    extrap_right = V_right' / V  # Row vector: weights for extrapolation to ξ=+1
+
+    return vec(extrap_left), vec(extrap_right)
+end
+
 
 #  factor to normalize legendre polynomials
 function orthonFactor(polyDeg, a = 0.0, b = 0.0)
@@ -533,12 +598,12 @@ function MMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return inv(invMMatrix(_nodes,_polyDeg, alpha, beta))
 end
 
-# #Stiffness matrix
-# function steifMatrix(_nodes,_polyDeg)
-#     #Mass matrix * Derivative matrix
-#     _steifMatrix = (getVandermonde_LEGENDRE(_nodes,_polyDeg) * transpose(getVandermonde_LEGENDRE(_nodes,_polyDeg)))^-1 * derivativeMatrix(_polyDeg,_nodes) 
-#     return _steifMatrix
-# end
+#Stiffness matrix
+function steifMatrix(_nodes,_polyDeg)
+    #Mass matrix * Derivative matrix
+    _steifMatrix = (getVandermonde_LEGENDRE(_nodes,_polyDeg) * transpose(getVandermonde_LEGENDRE(_nodes,_polyDeg)))^-1 * derivativeMatrix(_polyDeg,_nodes) 
+    return _steifMatrix
+end
 
 # Second order stiffness matrix
 function second_order_stiff_matrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
@@ -585,16 +650,16 @@ function weightedMMatrix(_nodes,_polyDeg, rho_i::Vector{Float64}, _deltarho::Flo
     # Compute weighted mass matrix and its inverse for each cell
     nCells = length(rho_i) - 1  # rho_i has nCells+1 face values
     rMM = Vector{Matrix{Float64}}(undef, nCells)
-    invRMM = Vector{Matrix{Float64}}(undef, nCells)
+    invrMM = Vector{Matrix{Float64}}(undef, nCells)
 
     for Cell in 1:nCells
         # M_ρ = ρ_i * M(0,0) + (Δρ/2) * M(0,1)
         rMM[Cell] = rho_i[Cell] .* M00 .+ (_deltarho/2) .* M01
         # Precompute inverse: M_ρ^{-1}
-        invRMM[Cell] = inv(rMM[Cell])
+        invrMM[Cell] = inv(rMM[Cell])
     end
 
-    return rMM, invRMM
+    return rMM, invrMM
 end
 
 end

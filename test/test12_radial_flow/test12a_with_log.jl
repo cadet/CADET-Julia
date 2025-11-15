@@ -20,16 +20,6 @@
 using CADETJulia
 using Printf
 
-# Enable debug logging
-CADETJulia.RadialConvDispOperatorDG.set_debug_log("test12a_debug.log")
-
-println("=" ^ 70)
-println("FREE-STREAM PRESERVATION TEST - RADIAL FLOW (WITH DEBUG LOG)")
-println("=" ^ 70)
-println()
-println("Debug output will be written to: test12a_debug.log")
-println()
-
 # ==================== TEST PARAMETERS ====================
 ncomp = 1           # Single component
 c_const = 1.0       # Constant concentration everywhere
@@ -45,7 +35,7 @@ epsilon_c = 1.0     # Porosity (1.0 = no particles, pure mobile phase)
 
 # Discretization
 polyDeg = 4         # Polynomial degree
-nCells = 8          # Number of cells
+nCells = 9          # Number of cells
 
 # Flow
 u_in = 1.0e-4       # Inlet velocity [m/s]
@@ -172,10 +162,6 @@ println("Initial state check:")
 @printf("  Expected: all values = %.6f\n", c_const)
 println()
 
-# Compute residual at t=0 - THIS WILL GENERATE DEBUG OUTPUT
-println("Computing residual (debug output going to log file)...")
-CADETJulia.problem!(dx0, x0, p, 0.0)
-
 # Check residual
 max_init_res = maximum(abs.(dx0))
 
@@ -229,11 +215,3 @@ else
 end
 println("=" ^ 70)
 println()
-
-# Close debug log
-CADETJulia.RadialConvDispOperatorDG.close_debug_log()
-println("Debug log closed. Check test12a_debug.log for detailed output.")
-println()
-println("=" ^ 70)
-println("TEST COMPLETE")
-println("=" ^ 70)

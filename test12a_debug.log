@@ -1,0 +1,14 @@
+
+================================================================================
+M_ρ CALCULATION VERIFICATION
+================================================================================
+
+Formula: M_ρ[Cell] = rho_i[Cell] * M(0,0) + (Δρ/2) * M(0,1)
+         where M(0,0) = _MM (standard mass matrix)
+               M(0,1) = mass matrix with (alpha=0, beta=1)
+
+Global parameters:
+  Δρ (delta_rho) = 0.010000000000000002 m
+  Δρ/2 = 0.005000000000000001 m
+
+M(0,0) - Standard Mass Matrix [5x5]:
