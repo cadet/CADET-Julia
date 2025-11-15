@@ -54,7 +54,7 @@ function lglnodes(N)
     end
 
     w = 2 ./(N .* N1 .* P[:, N1].^2)
-
+    
 
     return reverse(x), 1 ./ w
 end
@@ -69,7 +69,7 @@ function lgnodes(N)
     x = -cos.((2 .* (1:N1) .- 1) .* pi ./ (2 * N1))
 
     # Storage for Legendre polynomials
-    P = zeros(N1, N1)  # We only need current, previous, and next polynomials
+    P = zeros(N1, 3)  # We only need current, previous, and next polynomials
 
     # Newton-Raphson iteration to find roots of P_N1
     xold = ones(length(x)) .* 2.0
@@ -397,70 +397,6 @@ function derivativeMatrix(_polyDeg,_nodes)
         end
     end
     return _polyDerM
-end
-
-# @brief computation of extrapolation operators for LG nodes to boundaries
-# Returns: (extrap_left, extrap_right) where extrap_left extrapolates to ξ=-1, extrap_right to ξ=+1
-# Usage: u(-1) ≈ extrap_left ⋅ u(nodes), u(+1) ≈ extrap_right ⋅ u(nodes)
-function extrapolationOperatorsLG(_polyDeg, _nodes)
-    N = _polyDeg + 1
-
-    # Build Vandermonde matrix at the nodes
-    V = zeros(Float64, N, N)
-
-    for i in 1:N
-        x = _nodes[i]
-
-        # Initialize with P_0 and P_1
-        P_prev = 1.0
-        P_curr = x
-
-        V[i, 1] = P_prev
-        V[i, 2] = P_curr
-
-        # Use recurrence relation for higher degrees
-        for n in 2:_polyDeg
-            P_next = ((2*n - 1) * x * P_curr - (n - 1) * P_prev) / n
-            V[i, n+1] = P_next
-            P_prev = P_curr
-            P_curr = P_next
-        end
-    end
-
-    # Evaluate Legendre polynomials at boundaries ξ = -1 and ξ = +1
-    V_left = zeros(Float64, N)   # Legendre polynomials at ξ = -1
-    V_right = zeros(Float64, N)  # Legendre polynomials at ξ = +1
-
-    # At ξ = -1
-    P_prev = 1.0
-    P_curr = -1.0
-    V_left[1] = P_prev
-    V_left[2] = P_curr
-    for n in 2:_polyDeg
-        P_next = ((2*n - 1) * (-1.0) * P_curr - (n - 1) * P_prev) / n
-        V_left[n+1] = P_next
-        P_prev = P_curr
-        P_curr = P_next
-    end
-
-    # At ξ = +1
-    P_prev = 1.0
-    P_curr = 1.0
-    V_right[1] = P_prev
-    V_right[2] = P_curr
-    for n in 2:_polyDeg
-        P_next = ((2*n - 1) * (1.0) * P_curr - (n - 1) * P_prev) / n
-        V_right[n+1] = P_next
-        P_prev = P_curr
-        P_curr = P_next
-    end
-
-    # Extrapolation operators: V_boundary * inv(V)
-    # This gives the weights to combine nodal values to get boundary value
-    extrap_left = V_left' / V    # Row vector: weights for extrapolation to ξ=-1
-    extrap_right = V_right' / V  # Row vector: weights for extrapolation to ξ=+1
-
-    return vec(extrap_left), vec(extrap_right)
 end
 
 
