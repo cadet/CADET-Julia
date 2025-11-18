@@ -27,7 +27,7 @@ module RadialConvDispOperatorDG
         println("Debug logging disabled.")
     end
 
-    @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _polyDerM, _invMM, _S, _rMM, _invrMM, _nodes, _weights, v, d_rad, rho_i, cIn, c_star, g_star, Dg, _h, mul1)
+    @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _polyDerM, _invMM, _MM01, _S, _rMM, _invrMM, _nodes, _weights, v, d_rad, rho_i, cIn, c_star, g_star, Dg, _h, mul1)
         fill!(Dg, 0.0)   # reset auxiliary buffer used to build g
         fill!(Dc, 0.0)   # reset residual accumulator for mobile phase
         scale  = rho_i .* d_rad
@@ -84,10 +84,37 @@ module RadialConvDispOperatorDG
                 println(io, "  Row $i: ", _polyDerM[i,:])
             end
 
+            _polyDerMTranspose = transpose(_polyDerM)
+            println(io, "\n--- transpose DIFFERENTIATION MATRIX (_polyDerMTranspose) ---")
+            println(io, "  Size: $(size(_polyDerM))")
+            for i in axes(_polyDerMTranspose, 1)
+                println(io, "  Row $i: ", _polyDerMTranspose[i,:])
+            end
+
+            _MM = inv(_invMM)
+            println(io, "\n--- MASS MATRIX (_MM) ---")
+            println(io, "  Size: $(size(_MM))")
+            for i in axes(_MM, 1)
+                println(io, "  Row $i: ", _MM[i,:])
+            end
+
+            println(io, "\n--- MASS MATRIX 0,1 (_MM01) ---")
+            println(io, "  Size: $(size(_MM01))")
+            for i in axes(_MM01, 1)
+                println(io, "  Row $i: ", _MM01[i,:])
+            end
+
             println(io, "\n--- INVERSE MASS MATRIX (_invMM) ---")
             println(io, "  Size: $(size(_invMM))")
             for i in axes(_invMM, 1)
                 println(io, "  Row $i: ", _invMM[i,:])
+            end
+
+            X = _polyDerMTranspose * _MM
+            println(io, "\n--- OPERATOR Dᵀ * MM ---")
+            println(io, "  Size: $(size(X))")
+            for i in axes(X, 1)
+                println(io, "  Row $i: ", X[i,:])
             end
 
             println(io, "\n--- SKEW-SYMMETRIC MATRIX (_S) ---")
@@ -130,7 +157,7 @@ module RadialConvDispOperatorDG
         end
 
         # Numerical fluxes c*
-        interfaceFluxAuxiliary!(c_star, y, idx, _strideNode, _strideCell, _nCells, cIn)
+        interfaceFluxAuxiliary!(c_star, y, idx, _strideNode, _strideCell, _nCells)
 
         if DEBUG_RADIAL_RESIDUAL[]
             io = DEBUG_LOG_FILE[]
@@ -184,13 +211,13 @@ module RadialConvDispOperatorDG
             flush(io)
         end
 
-        # Surface Integral: B(v c*) - B_g(scale * g*)
-        surfaceIntegral!(Dc, _nNodes, _nCells, idx, _strideNode, _strideCell, c_star, g_star, scale, v, rho_i)
+        # Volume Integral: M_ρ^{-1} ( Sᵀ (v c) - S_g g ),
+        volumeIntegral!(Dc, y, idx, _nCells, _nNodes, _polyDerM, _S, _rMM, _invrMM, _h, mul1, rho_i, _deltarho, d_rad, _nodes, _weights, v)
 
         if DEBUG_RADIAL_RESIDUAL[]
             io = DEBUG_LOG_FILE[]
-            println(io, "\n--- STEP 6: SURFACE INTEGRAL ---")
-            println(io, "  Dc after surfaceIntegral! [B(v c*) - B_g(scale * g*)]:")
+            println(io, "\n--- STEP 6: VOLUME INTEGRAL ---")
+            println(io, "  Dc after volumeIntegral! [Sᵀ(v c) - Dᵀ M_ρ (d_rad * g), then M_ρ^{-1}]:")
             for cell in 1:_nCells
                 cell_vals = Dc[(cell-1)*_nNodes + 1 : cell*_nNodes]
                 println(io, "    Cell $cell Dc: $cell_vals")
@@ -198,13 +225,13 @@ module RadialConvDispOperatorDG
             flush(io)
         end
 
-        # Volume Integral: Sᵀ (v c) - S_g g, then apply M_ρ^{-1}
-        volumeIntegral!(Dc, y, idx, _nCells, _nNodes, _polyDerM, _S, _rMM, _invrMM, _h, mul1, rho_i, _deltarho, d_rad, _nodes, _weights, v)
+        # Surface Integral: M_ρ^{-1} ( B(v c*) - B_g(scale * g*) )
+        surfaceIntegral!(Dc, _nNodes, _nCells, c_star, g_star, scale, v, rho_i, _invrMM)
 
         if DEBUG_RADIAL_RESIDUAL[]
             io = DEBUG_LOG_FILE[]
-            println(io, "\n--- STEP 7: VOLUME INTEGRAL ---")
-            println(io, "  Dc after volumeIntegral! [Sᵀ(v c) - Dᵀ M_ρ (d_rad * g), then M_ρ^{-1}]:")
+            println(io, "\n--- STEP 7: SURFACE INTEGRAL ---")
+            println(io, "  Dc after surfaceIntegral! [B(v c*) - B_g(scale * g*)]:")
             for cell in 1:_nCells
                 cell_vals = Dc[(cell-1)*_nNodes + 1 : cell*_nNodes]
                 println(io, "    Cell $cell Dc: $cell_vals")
@@ -246,7 +273,7 @@ module RadialConvDispOperatorDG
         nothing
     end
 
-    # Compute strong derivative: Sᵀ(v*c) - Dᵀ M_ρ (d_rad * g), then apply M_ρ^{-1}
+    # Compute strong derivative: M_ρ^{-1} (Sᵀ(v*c) - Dᵀ M_ρ (d_rad * g)),
     @inline function volumeIntegral!(Dc, y, idx, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _S::Matrix{Float64}, _rMM::Vector{Matrix{Float64}}, _invrMM::Vector{Matrix{Float64}}, g::Vector{Float64}, mul1::Vector{Float64}, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function}, _nodes::Vector{Float64}, _weights::Vector{Float64}, v_in::Float64)
         base = first(idx)
 
@@ -305,20 +332,26 @@ module RadialConvDispOperatorDG
                 println(io, "      Dc_cell (before adding volume terms) = ", collect(Dc_cell))
             end
 
-            # Dc += (tmp_conv - tmp_diff)
-            @. Dc_cell += (tmp_conv - tmp_diff)
+            volume_contrib = tmp_conv - tmp_diff
 
             if DEBUG_RADIAL_RESIDUAL[]
                 io = DEBUG_LOG_FILE[]
-                println(io, "      Dc_cell (after += tmp_conv - tmp_diff) = ", collect(Dc_cell))
+                println(io, "      volume_contrib (before M_ρ^{-1}) = $volume_contrib")
             end
 
             # Apply M_ρ^{-1}
-            @views Dc_cell .= _invrMM[Cell] * Dc_cell
+            volume_contrib_invM = _invrMM[Cell] * volume_contrib
 
             if DEBUG_RADIAL_RESIDUAL[]
                 io = DEBUG_LOG_FILE[]
-                println(io, "      Dc_cell (after M_ρ^{-1}) = ", collect(Dc_cell))
+                println(io, "      volume_contrib (after M_ρ^{-1}) = $volume_contrib_invM")
+            end
+
+            @. Dc_cell += volume_contrib_invM
+
+            if DEBUG_RADIAL_RESIDUAL[]
+                io = DEBUG_LOG_FILE[]
+                println(io, "      Dc_cell (after adding volume contribution) = ", collect(Dc_cell))
                 flush(io)
             end
         end
@@ -338,30 +371,66 @@ module RadialConvDispOperatorDG
         nothing
     end
 
-    # Exact Integration lifting of Surface - [B(v c*) - B_g(scale g*)]
-    @inline function surfaceIntegral!(_surfaceFlux::Vector{Float64}, nNodes::Int, _nCells::Int, idx::UnitRange{Int}, _strideNode::Int, _strideCell::Int, c_star::Vector{Float64}, g_star::Vector{Float64}, scale::Vector{Float64}, v_in::Float64, rho_i::Vector{Float64})
-        # accumulate: B(v * c*) - B_g(scale * g*)
+    # Exact Integration lifting of Surface - M_ρ{-1} [B(v c*) - B_g(scale g*)]
+    @inline function surfaceIntegral!(Dc::Vector{Float64}, nNodes::Int, _nCells::Int, c_star::Vector{Float64}, g_star::Vector{Float64}, scale::Vector{Float64}, v_in::Float64, rho_i::Vector{Float64}, _invrMM::Vector{Matrix{Float64}})
         @inbounds for Cell in 1:_nCells
-            # Convective and diffusive flux
+            Dc_cell = @view(Dc[(Cell - 1) * nNodes + 1 : Cell * nNodes])
+
             v_left = v_in * rho_i[1] / rho_i[Cell]
             v_right = v_in * rho_i[1] / rho_i[Cell + 1]
 
-            # c_star and g_star
-            _surfaceFlux[(Cell - 1) * nNodes + 1] -= v_left * c_star[Cell] - (scale[Cell] * g_star[Cell])
-            _surfaceFlux[Cell * nNodes] -= v_right * c_star[Cell + 1] - (scale[Cell + 1] * g_star[Cell + 1])
+            # Compute surface contributions: B(v c*) - B_g(scale * g*)
+            # Initialize surface
+            surface_contrib = zeros(nNodes)
+
+            # Left boundary
+            surface_contrib[1] = - (v_left * c_star[Cell] - (scale[Cell] * g_star[Cell]))
+
+            # Right boundary
+            surface_contrib[nNodes] = - (v_right * c_star[Cell + 1] - (scale[Cell + 1] * g_star[Cell + 1]))
+
+            if DEBUG_RADIAL_RESIDUAL[]
+                io = DEBUG_LOG_FILE[]
+                println(io, "\n    Surface Cell $Cell:")
+                println(io, "      v_left = $v_left, v_right = $v_right")
+                println(io, "      c_star[left=$(Cell)] = $(c_star[Cell]), c_star[right=$(Cell+1)] = $(c_star[Cell+1])")
+                println(io, "      g_star[left=$(Cell)] = $(g_star[Cell]), g_star[right=$(Cell+1)] = $(g_star[Cell+1])")
+                println(io, "      scale[left=$(Cell)] = $(scale[Cell]), scale[right=$(Cell+1)] = $(scale[Cell+1])")
+                println(io, "      surface_contrib (before M_ρ^{-1}) = $surface_contrib")
+            end
+
+            # Apply M_ρ^{-1}
+            surface_contrib_invM = _invrMM[Cell] * surface_contrib
+
+            if DEBUG_RADIAL_RESIDUAL[]
+                io = DEBUG_LOG_FILE[]
+                println(io, "      surface_contrib (after M_ρ^{-1}) = $surface_contrib_invM")
+            end
+
+            @. Dc_cell += surface_contrib_invM
+
+            if DEBUG_RADIAL_RESIDUAL[]
+                io = DEBUG_LOG_FILE[]
+                println(io, "      Dc_cell (after adding surface) = ", collect(Dc_cell))
+                flush(io)
+            end
         end
+
         return nothing
     end
 
-    # Numerical fluxes c* = 0.5 (c_L + c_R)
-    @inline function interfaceFluxAuxiliary!(_surfaceFlux::Vector{Float64}, C, idx::UnitRange{Int}, _strideNode::Int, _strideCell::Int, _nCells::Int, cIn::Float64)
-        base = first(idx)
+    @inline function interfaceFluxAuxiliary!(_surfaceFlux::Vector{Float64}, C,idx, _strideNode::Int64, _strideCell::Int64,_nCells::Int64)
+        # Auxiliary flux: c* = 0.5 (c_l + c_r) for g - Determines the interfaces (because of lifting matrix, B) between the cells - hence the length is nCells +1
+        
+        # _surfaceFlux = zeros(_nCells+1)
+        # calculate inner interface fluxes
         @inbounds for Cell in 2:_nCells
-                _surfaceFlux[Cell] = 0.5 * (C[base + (Cell - 1) * _strideCell - _strideNode] + C[base + (Cell - 1) * _strideCell])
-            end
-            _surfaceFlux[1] = cIn
-            _surfaceFlux[_nCells + 1] = C[base + _nCells * _strideCell - _strideNode]
-        return nothing
+            _surfaceFlux[Cell] = 0.5 * ((C[idx[1] + (Cell-1) * _strideCell - _strideNode]) + (C[idx[1] + (Cell-1) * _strideCell]))
+        end    
+        # calculate boundary interface fluxes
+        _surfaceFlux[1] = 0.5 * ((C[idx[1] ]) + (C[idx[1] ]))  # left boundary interface
+        _surfaceFlux[_nCells+1] = 0.5 * ((C[idx[1] + _nCells * _strideCell - _strideNode]) + (C[idx[1] + _nCells * _strideCell - _strideNode]))  # right boundary interface
+        nothing
     end
 
     # Numerical fluxes (auxiliary central g*)
