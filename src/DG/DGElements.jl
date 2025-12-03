@@ -59,48 +59,191 @@ function lglnodes(N)
     return reverse(x), 1 ./ w
 end
 
-#LG nodes and weights (Algorithm 23 from Kopriva - Implementing Spectral Methods for PDEs)
-function lgnodes(N)
-    # Number of nodes
+# Chebyshev-Gauss-Lobatto nodes and weights
+function cglnodes(N)
     N1 = N + 1
 
-    # Use Chebyshev-Gauss nodes as initial guess
-    # For LG nodes, we don't include endpoints, so we use interior Chebyshev nodes
-    x = -cos.((2 .* (1:N1) .- 1) .* pi ./ (2 * N1))
-
-    # Storage for Legendre polynomials
-    P = zeros(N1, 3)  # We only need current, previous, and next polynomials
-
-    # Newton-Raphson iteration to find roots of P_N1
-    xold = ones(length(x)) .* 2.0
-
-    while maximum(abs.(x .- xold)) > eps()
-        xold[:] = x
-
-        # Initialize P_0 and P_1
-        P[:, 1] .= 1.0
-        P[:, 2] = x
-
-        # Compute P_N1(x) using three-term recurrence relation
-        for k = 2:N
-            P[:, 3] = ((2 * k - 1) .* x .* P[:, 2] - (k - 1) .* P[:, 1]) ./ k
-            P[:, 1] = P[:, 2]
-            P[:, 2] = P[:, 3]
-        end
-
-        # Newton-Raphson update: x_new = x_old - P_N1(x) / P'_N1(x)
-        # Using the relation: P'_N1(x) = N1 * (x * P_N1(x) - P_N(x)) / (x^2 - 1)
-        # which simplifies to: P'_N1(x) = N1 / (1 - x^2) * (x * P_N1(x) - P_N(x))
-        dP = N1 .* (x .* P[:, 3] - P[:, 1]) ./ (x.^2 .- 1.0)
-        x[:] = xold - P[:, 3] ./ dP
+    # Chebyshev-Gauss-Lobatto nodes: x_j = -cos(π*j/N)
+    x = zeros(N1)
+    for j in 0:N
+        x[j+1] = -cos(pi * j / N)
     end
 
-    # Compute weights using: w_i = 2 / ((1 - x_i^2) * [P'_N1(x_i)]^2)
-    # We use the derivative formula from the iteration
-    dP = N1 .* (x .* P[:, 3] - P[:, 1]) ./ (x.^2 .- 1.0)
-    w = 2.0 ./ ((1.0 .- x.^2) .* dP.^2)
+    # Weights for Chebyshev-Gauss-Lobatto quadrature
+    w = zeros(N1)
+    w[1] = pi / (2 * N)
+    w[N1] = pi / (2 * N)
+    for j in 1:(N-1)
+        w[j+1] = pi / N
+    end
 
-    return reverse(x), 1 ./ w
+    return x, 1 ./ w
+end
+
+# Chebyshev-Gauss nodes and weights
+function cgnodes(N)
+    # N+1 interior nodes
+    N1 = N + 1
+
+    # Chebyshev-Gauss nodes: x_j = -cos(π*(2j+1)/(2N+2))
+    x = zeros(N1)
+    for j in 0:N
+        x[j+1] = -cos(pi * (2*j + 1) / (2 * N1))
+    end
+
+    # Weights for Chebyshev-Gauss quadrature (all equal)
+    w = fill(pi / N1, N1)
+
+    return x, 1 ./ w
+end
+
+# Chebyshev polynomial evaluation using three-term recurrence (Algorithm 28 from Kopriva 2009)
+function chebyshev_poly(x, N)
+    # Evaluate Chebyshev polynomials T_0, T_1, ..., T_N at point x
+    # Returns vector of length N+1
+    T = zeros(N + 1)
+
+    # Initial values
+    T[1] = 1.0  # T_0(x) = 1
+    if N >= 1
+        T[2] = x  # T_1(x) = x
+    end
+
+    # Three-term recurrence: T_{n+1}(x) = 2*x*T_n(x) - T_{n-1}(x)
+    for n in 1:(N-1)
+        T[n+2] = 2.0 * x * T[n+1] - T[n]
+    end
+
+    return T
+end
+
+# Chebyshev polynomial first derivative evaluation
+function chebyshev_poly_derivative(x, N)
+    # Evaluate first derivatives T'_0, T'_1, ..., T'_N at point x
+    # Returns vector of length N+1
+    T = chebyshev_poly(x, N)
+    dT = zeros(N + 1)
+
+    # Initial values
+    dT[1] = 0.0  # T'_0(x) = 0
+    if N >= 1
+        dT[2] = 1.0  # T'_1(x) = 1
+    end
+
+    # Recurrence relation: T'_{n+1}(x) = 2*T_n(x) + 2*x*T'_n(x) - T'_{n-1}(x)
+    for n in 1:(N-1)
+        dT[n+2] = 2.0 * T[n+1] + 2.0 * x * dT[n+1] - dT[n]
+    end
+
+    return dT
+end
+
+# Chebyshev polynomial second derivative evaluation
+function chebyshev_poly_second_derivative(x, N)
+    # Evaluate second derivatives T''_0, T''_1, ..., T''_N at point x
+    # Returns vector of length N+1
+    T = chebyshev_poly(x, N)
+    dT = chebyshev_poly_derivative(x, N)
+    d2T = zeros(N + 1)
+
+    # Initial values
+    d2T[1] = 0.0  # T''_0(x) = 0
+    if N >= 1
+        d2T[2] = 0.0  # T''_1(x) = 0
+    end
+    if N >= 2
+        d2T[3] = 4.0  # T''_2(x) = 4
+    end
+
+    # Recurrence: T''_{n+1}(x) = 4*T'_n(x) + 2*x*T''_n(x) - T''_{n-1}(x)
+    for n in 2:(N-1)
+        d2T[n+2] = 4.0 * dT[n+1] + 2.0 * x * d2T[n+1] - d2T[n]
+    end
+
+    return d2T
+end
+
+# Chebyshev polynomial arbitrary derivative evaluation
+function chebyshev_poly_nth_derivative(x, N, n_deriv)
+    # Evaluate nth derivatives at point x
+    # n_deriv: order of derivative
+    if n_deriv == 0
+        return chebyshev_poly(x, N)
+    elseif n_deriv == 1
+        return chebyshev_poly_derivative(x, N)
+    elseif n_deriv == 2
+        return chebyshev_poly_second_derivative(x, N)
+    else
+        # For higher derivatives, use the general recurrence
+        error("Derivatives of order > 2 not yet implemented")
+    end
+end
+
+# Chebyshev Vandermonde matrix (based on Kopriva 2009)
+function getVandermonde_CHEBYSHEV(_nodes, _polyDeg)
+    N1 = length(_nodes)
+    V = zeros(Float64, N1, N1)
+
+    # Fill Vandermonde matrix: V[i,j] = T_{j-1}(x_i)
+    for i in 1:N1
+        T = chebyshev_poly(_nodes[i], _polyDeg)
+        V[i, :] = T
+    end
+
+    return V
+end
+
+# Normalized/Orthogonal Chebyshev Vandermonde matrix
+function getVandermonde_CHEBYSHEV_NORMALIZED(_nodes, _polyDeg)
+    N1 = length(_nodes)
+    V = zeros(Float64, N1, N1)
+
+    # Normalization factors for orthogonal Chebyshev polynomials
+    # ∫_{-1}^{1} T_n(x) T_m(x) / √(1-x²) dx = 0 if n≠m, π/2 if n=m>0, π if n=m=0
+    norm = zeros(N1)
+    norm[1] = sqrt(pi)  # ||T_0||
+    for n in 1:_polyDeg
+        norm[n+1] = sqrt(pi / 2.0)  # ||T_n|| for n > 0
+    end
+
+    # Fill normalized Vandermonde matrix
+    for i in 1:N1
+        T = chebyshev_poly(_nodes[i], _polyDeg)
+        for j in 1:N1
+            V[i, j] = T[j] / norm[j]
+        end
+    end
+
+    return V
+end
+
+# Chebyshev derivative matrix (Vandermonde approach)
+function chebyshev_derivative_vandermonde(_nodes, _polyDeg)
+    N1 = length(_nodes)
+    DV = zeros(Float64, N1, N1)
+
+    # Fill derivative Vandermonde matrix: DV[i,j] = T'_{j-1}(x_i)
+    for i in 1:N1
+        dT = chebyshev_poly_derivative(_nodes[i], _polyDeg)
+        DV[i, :] = dT
+    end
+
+    return DV
+end
+
+# Chebyshev mass matrix (for Gauss or Gauss-Lobatto quadrature)
+function chebyshev_mass_matrix(_nodes, _polyDeg)
+    # M = V^T * V for normalized Chebyshev basis
+    V = getVandermonde_CHEBYSHEV_NORMALIZED(_nodes, _polyDeg)
+    return V' * V
+end
+
+# Chebyshev stiffness matrix
+function chebyshev_stiffness_matrix(_nodes, _polyDeg)
+    # S = V^T * D * V where D is the derivative matrix
+    V = getVandermonde_CHEBYSHEV_NORMALIZED(_nodes, _polyDeg)
+    D = derivativeMatrix(_polyDeg, _nodes)
+    return V' * D * V
 end
     w = 2 ./(N .* N1 .* P[:, N1].^2)
     
