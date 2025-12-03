@@ -21,12 +21,11 @@ using CADETJulia
 using Printf
 
 # Enable debug logging for radial residual
-CADETJulia.RadialConvDispOperatorDG.enable_debug("test12a_debug.log")
 
 # ==================== TEST PARAMETERS ====================
 ncomp = 1           # Single component
 c_const = 1.0       # Constant concentration everywhere
-tend = 0.01         # Test for short time (only initial residual matters)
+tend = 1         # Test for short time (only initial residual matters)
 
 # Geometry
 rin = 0.01         # Inner radius [m]
@@ -41,39 +40,13 @@ polyDeg = 4         # Polynomial degree
 nCells = 9          # Number of cells
 
 # Flow
-u_in = 1.0e-4       # Inlet velocity [m/s]
+u_in = 1.0e-6       # Inlet velocity [m/s]
 
 # Solver tolerances
 abstol = 1.0e-10
 reltol = 1.0e-8
 dtout = 0.01        # Output at end only
 
-println("TEST CONFIGURATION:")
-println("  Constant state test:")
-println("    Initial c(r,t=0) = $c_const (everywhere)")
-println("    Inlet cIn(t)     = $c_const (constant for all time)")
-println("    Expected:        c(r,t) = $c_const (should remain constant)")
-println()
-println("  Geometry:")
-println("    Inner radius = $rin m")
-println("    Outer radius = $rout m")
-println()
-println("  Physics:")
-println("    Dispersion D = $D_rad m^2/s")
-println("    Porosity eps_c = $epsilon_c")
-println("    Velocity u = $u_in m/s")
-println()
-println("  Discretization:")
-println("    Polynomial degree = $polyDeg")
-println("    Number of cells = $nCells")
-println("    Total DOFs = $(nCells * (polyDeg + 1))")
-println()
-println("  Solver:")
-println("    abstol = $abstol")
-println("    reltol = $reltol")
-println("    Simulation time = $tend s")
-println("=" ^ 70)
-println()
 
 # ==================== BUILD MODEL ====================
 
@@ -135,11 +108,6 @@ solverOptions = CADETJulia.SolverCache(
 )
 
 # ==================== INITIAL RESIDUAL CHECK ====================
-println("=" ^ 70)
-println("CHECKING INITIAL RESIDUAL (WITH DEBUG OUTPUT)")
-println("=" ^ 70)
-println("Computing residual at t=0 with constant state c=$c_const...")
-println()
 
 x0 = solverOptions.x0
 dx0 = similar(x0)
@@ -224,6 +192,3 @@ else
 end
 println("=" ^ 70)
 println()
-
-# Disable debug logging
-CADETJulia.RadialConvDispOperatorDG.disable_debug()
