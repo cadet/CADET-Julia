@@ -1,5 +1,5 @@
 #!/usr/bin/env julia
-# Extract concentration vs time data from test12c for plotting
+# Extract concentration vs time data from test12d (free stream) for plotting
 # Outputs CSV files that can be plotted with external tools
 
 using CADETJulia
@@ -8,29 +8,29 @@ using Statistics
 
 # ==================== TEST PARAMETERS ====================
 ncomp = 1
-tend = 1000
+tend = 0.5
 
 # Geometry
 rin = 0.01
 rout = 0.1
 
 # Physical properties
-D_rad = 1.0e-6
-epsilon_c = 1.0
+D_rad = 1.0e-4
+epsilon_c = 1.0 
 
 # Discretization
-polyDeg = 5
-nCells = 100
+polyDeg = 4
+nCells = 10
 
 # Flow
-Q = 1.0e-6
+u_in = 1.0e-2
 
 # Solver tolerances
 abstol = 1.0e-10
 reltol = 1.0e-8
-dtout = 0.1
+dtout = 0.001
 
-println("Running simulation and extracting data for plotting...")
+println("Running free stream simulation and extracting data for plotting...")
 
 # ==================== BUILD MODEL ====================
 
@@ -61,14 +61,12 @@ col = CADETJulia.rLRM(
     nCells = nCells,
 )
 
-u_in = Q / (col.cross_section_area * col.eps_c)
-
 inlet = CADETJulia.CreateInlet(nComp = ncomp, nSections = 1)
 CADETJulia.modify_inlet!(
     inlet = inlet,
     nComp = ncomp,
     section = 1,
-    cIn_c = fill(0.0, ncomp),
+    cIn_c = fill(rin, ncomp),  # Match initial condition at inlet: c = ρ_inlet
     cIn_l = zeros(ncomp),
     cIn_q = zeros(ncomp),
     cIn_cube = zeros(ncomp),
@@ -129,14 +127,15 @@ idx_outlet = nPoints
 
 # ==================== WRITE CSV FILES ====================
 
-# File 1: Concentration vs Time at specific locations
+# File 1: Concentration vs Time at specific locations (chromatogram data)
 output_dir = @__DIR__
-csv_file_1 = joinpath(output_dir, "test12c_c_vs_t.csv")
+csv_file_1 = joinpath(output_dir, "test12a_c_vs_t.csv")
 
 open(csv_file_1, "w") do io
     # Header
     println(io, "time,c_inlet,c_quarter,c_mid,c_3quarter,c_outlet")
     println(io, "# rho_inlet=$(rho_nodes[idx_inlet]), rho_quarter=$(rho_nodes[idx_quarter]), rho_mid=$(rho_nodes[idx_mid]), rho_3quarter=$(rho_nodes[idx_3quarter]), rho_outlet=$(rho_nodes[idx_outlet])")
+    println(io, "# Free stream test: D=$D_rad, u_in=$u_in m^3/s")
 
     # Data
     for i in 1:n_times
@@ -151,52 +150,6 @@ open(csv_file_1, "w") do io
 end
 
 println("Saved: $csv_file_1")
-
-# File 2: Spatial profiles at different times
-csv_file_2 = joinpath(output_dir, "test12c_spatial_profiles.csv")
-
-times_to_save = [1, 6, 11, 16, 21]  # t=0, 2.5, 5, 7.5, 10s
-
-open(csv_file_2, "w") do io
-    # Header
-    print(io, "rho")
-    for idx in times_to_save
-        print(io, ",c_t=$(times[idx])")
-    end
-    println(io)
-
-    # Data
-    for j in 1:nPoints
-        @printf(io, "%.6f", rho_nodes[j])
-        for idx in times_to_save
-            @printf(io, ",%.6e", sol.u[idx][j])
-        end
-        println(io)
-    end
-end
-
-println("Saved: $csv_file_2")
-
-# File 3: Mean concentration and variance vs time
-csv_file_3 = joinpath(output_dir, "test12c_statistics.csv")
-
-open(csv_file_3, "w") do io
-    println(io, "time,c_mean,c_variance,c_min,c_max")
-
-    for i in 1:n_times
-        c_t = sol.u[i][1:nPoints]
-        c_mean = mean(c_t)
-        c_var = sum((c_t .- c_mean).^2) / nPoints
-        c_min = minimum(c_t)
-        c_max = maximum(c_t)
-
-        @printf(io, "%.3f,%.6e,%.6e,%.6e,%.6e\n",
-            times[i], c_mean, c_var, c_min, c_max)
-    end
-end
-
-println("Saved: $csv_file_3")
-
 # ==================== SIMPLE TEXT-BASED VISUALIZATION ====================
 
 println("\n" * "="^80)
@@ -256,9 +209,9 @@ println("-"^80)
 println()
 
 println("Summary:")
-println("  - Inlet concentration (I) decreases from $(round(c_inlet_data[1], digits=6)) to $(round(c_inlet_data[end], digits=6))")
-println("  - Mid concentration (M) stays around $(round(mean(c_mid_data), digits=6))")
-println("  - Outlet concentration (O) stays around $(round(mean(c_outlet_data), digits=6))")
+println("  - Inlet concentration (I) changes from $(round(c_inlet_data[1], digits=6)) to $(round(c_inlet_data[end], digits=6))")
+println("  - Mid concentration (M) changes from $(round(c_mid_data[1], digits=6)) to $(round(c_mid_data[end], digits=6))")
+println("  - Outlet concentration (O) changes from $(round(c_outlet_data[1], digits=6)) to $(round(c_outlet_data[end], digits=6))")
 println()
 println("CSV files contain full data for plotting with Python, MATLAB, Excel, etc.")
 println("="^80)
