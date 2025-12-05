@@ -20,7 +20,7 @@ epsilon_c = 1.0
 
 # Discretization
 polyDeg = 4
-nCells = 10
+nCells = 100
 
 # Flow
 u_in = 1.0e-2
@@ -35,7 +35,7 @@ println("Running free stream simulation and extracting data for plotting...")
 # ==================== BUILD MODEL ====================
 
 using CADETJulia.DGElements
-nodes_ref, _ = DGElements.lglnodes(polyDeg)
+nodes_ref, _ = DGElements.cglnodes(polyDeg)
 
 deltarho = (rout - rin) / nCells
 nNodes = polyDeg + 1

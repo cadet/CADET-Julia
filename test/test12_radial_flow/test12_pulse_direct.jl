@@ -23,7 +23,7 @@ polyDeg = 3
 nCells = 10
 
 # Flow
-Q = 2.0/60.0
+Q = 1.0e-2
 
 # Solver tolerances
 abstol = 1.0e-10
@@ -38,7 +38,7 @@ println()
 # ==================== BUILD MODEL ====================
 
 using CADETJulia.DGElements
-nodes_ref, _ = DGElements.lglnodes(polyDeg)
+nodes_ref, _ = DGElements.cglnodes(polyDeg)
 
 deltarho = (rout - rin) / nCells
 nNodes = polyDeg + 1

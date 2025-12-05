@@ -549,9 +549,9 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 		# Convection Dispersion term
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp]
 		RadialConvDispOperatorDG.radialresidualImpl!(m.ConvDispOpInstance.Dc, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nNodes, m.ConvDispOpInstance.nCells, m.ConvDispOpInstance.deltarho, m.polyDeg, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.ConvDispOpInstance.MM01, m.ConvDispOpInstance.MM00, m.ConvDispOpInstance.rMM, m.ConvDispOpInstance.invrMM, m.ConvDispOpInstance.nodes, m.ConvDispOpInstance.weights, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_rad[j], m.ConvDispOpInstance.rho_i, m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.g_star, m.ConvDispOpInstance.Dg, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1)
-		
-		# Mobile phase RHS 
-		@views RHS[m.idx .+ idx_units[sink]] .= m.ConvDispOpInstance.Dc
+
+		# Mobile phase RHS
+		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dc - m.Fc * RHS_q[m.idx]
 	end
 	
     nothing

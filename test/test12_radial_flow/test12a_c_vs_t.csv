@@ -1,5 +1,5 @@
 time,c_inlet,c_quarter,c_mid,c_3quarter,c_outlet
-# rho_inlet=0.01, rho_quarter=0.029554058481814107, rho_mid=0.05500000000000001, rho_3quarter=0.0745540584818141, rho_outlet=0.1
+# rho_inlet=0.01, rho_quarter=0.0325, rho_mid=0.05500000000000001, rho_3quarter=0.0775, rho_outlet=0.1
 # Free stream test: D=0.0001, u_in=0.01 m^3/s
 0.000,1.000000e-02,1.000000e-02,1.000000e-02,1.000000e-02,1.000000e-02
 0.001,1.000000e-02,1.000000e-02,1.000000e-02,1.000000e-02,1.000000e-02
