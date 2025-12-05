@@ -59,7 +59,7 @@ module RadialConvDispOperatorDG
     @inline function surfaceIntegraly!(stateDer,state,idx, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer,_surfaceFlux,_nCells,_nNodes,_invMM, _polyDeg)
         for Cell in 1:_nCells
             @inbounds @simd for Node in 1:_nNodes
-                stateDer[1 + ( (Cell - 1) * strideCell_stateDer) + ( (Node - 1) * strideNode_stateDer)] -=
+                stateDer[1 + ( (Cell - 1) * strideCell_stateDer) + ( (Node - 1) * strideNode_stateDer)] +=
                     (_invMM[Node, 1])  * ( (state[idx[1] + ((Cell - 1) * strideCell_state)]) - (_surfaceFlux[Cell]) ) -
                     (_invMM[Node, end]) * ( (state[idx[1] + ((Cell - 1) * strideCell_state) + (_polyDeg * strideNode_state)]) - (_surfaceFlux[Cell + 1]) )
             end
@@ -75,21 +75,21 @@ module RadialConvDispOperatorDG
             fill!(surface_contrib, 0.0)
             surface_contrib[1] = -(v * cIn - rho_i[1] * d_rad * g_star[1])
             surface_contrib[nNodes] = v * c_star[2] - rho_i[2] * d_rad * g_star[2]
-            broadcast!(+, @view(Dc[1:nNodes]), @view(Dc[1:nNodes]), mul!(surface_contrib, _invrMM[1], surface_contrib))
+            broadcast!(-, @view(Dc[1:nNodes]), @view(Dc[1:nNodes]), mul!(surface_contrib, _invrMM[1], surface_contrib))
         end
 
         @inbounds for Cell in 2:_nCells-1
             fill!(surface_contrib, 0.0)
             surface_contrib[1] = -(v * c_star[Cell] - rho_i[Cell] * d_rad * g_star[Cell])
             surface_contrib[nNodes] = v * c_star[Cell + 1] - rho_i[Cell + 1] * d_rad * g_star[Cell + 1]
-            broadcast!(+, @view(Dc[(Cell - 1) * nNodes + 1 : Cell * nNodes]), @view(Dc[(Cell - 1) * nNodes + 1 : Cell * nNodes]), mul!(surface_contrib, _invrMM[Cell], surface_contrib))
+            broadcast!(-, @view(Dc[(Cell - 1) * nNodes + 1 : Cell * nNodes]), @view(Dc[(Cell - 1) * nNodes + 1 : Cell * nNodes]), mul!(surface_contrib, _invrMM[Cell], surface_contrib))
         end
 
         @inbounds begin
             fill!(surface_contrib, 0.0)
             surface_contrib[1] = -(v * c_star[_nCells] - rho_i[_nCells] * d_rad * g_star[_nCells])
             surface_contrib[nNodes] = v * c_star[_nCells + 1]
-            broadcast!(+, @view(Dc[(_nCells - 1) * nNodes + 1 : _nCells * nNodes]), @view(Dc[(_nCells - 1) * nNodes + 1 : _nCells * nNodes]), mul!(surface_contrib, _invrMM[_nCells], surface_contrib))
+            broadcast!(-, @view(Dc[(_nCells - 1) * nNodes + 1 : _nCells * nNodes]), @view(Dc[(_nCells - 1) * nNodes + 1 : _nCells * nNodes]), mul!(surface_contrib, _invrMM[_nCells], surface_contrib))
         end
         return nothing
     end
