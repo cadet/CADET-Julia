@@ -32,7 +32,7 @@ function lglnodes(N)
     end
 
     w = 2 ./(N .* N1 .* P[:, N1].^2)
-    
+
     return reverse(x), 1 ./ w
 end
 
