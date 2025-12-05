@@ -54,9 +54,52 @@ function lglnodes(N)
     end
 
     w = 2 ./(N .* N1 .* P[:, N1].^2)
-    
 
     return reverse(x), 1 ./ w
+end
+
+# Legendre-Gauss (LG) nodes and weights
+function lgnodes(N)
+    N1 = N + 1
+
+    x = zeros(N1)
+    for i in 1:N1
+        x[i] = -cos((2*i - 1) * pi / (2*N1))
+    end
+
+    # Legendre polynomial values
+    P = zeros(N1, N1 + 1)
+
+    # Newton-Raphson iteration to find roots of P_{N+1}(x)
+    xold = ones(N1) .* 2.0
+
+    while maximum(abs.(x .- xold)) > eps()
+        xold[:] = x
+
+        P[:, 1] .= 1.0
+        P[:, 2] = x
+
+        # Three-term recurrence for Legendre polynomials
+        for k = 2:N1
+            P[:, k + 1] = ((2*k - 1) .* x .* P[:, k] - (k - 1) .* P[:, k - 1]) ./ k
+        end
+
+        # Newton-Raphson update: x_{n+1} = x_n - P_{N+1}(x_n) / P'_{N+1}(x_n)
+        # where P'_{N+1}(x) = (N+1) / (x^2 - 1) * [x * P_{N+1}(x) - P_N(x)]
+        for i in 1:N1
+            dP = (N1) / (x[i]^2 - 1.0) * (x[i] * P[i, N1 + 1] - P[i, N1])
+            x[i] = xold[i] - P[i, N1 + 1] / dP
+        end
+    end
+
+    # Compute weights: w_i = 2 / [(1 - x_i^2) * (P'_{N+1}(x_i))^2]
+    w = zeros(N1)
+    for i in 1:N1
+        dP = (N1) / (x[i]^2 - 1.0) * (x[i] * P[i, N1 + 1] - P[i, N1])
+        w[i] = 2.0 / ((1.0 - x[i]^2) * dP^2)
+    end
+
+    return x, 1 ./ w
 end
 
 # Chebyshev-Gauss-Lobatto nodes and weights
@@ -727,18 +770,75 @@ function weightedMMatrix(_nodes,_polyDeg, rho_i::Vector{Float64}, _deltarho::Flo
     M01 = MMatrix(_nodes, _polyDeg, 0, 1)
 
     # Compute weighted mass matrix and its inverse for each cell
-    nCells = length(rho_i) - 1  # rho_i has nCells+1 face values
+    nCells = length(rho_i) - 1
     rMM = Vector{Matrix{Float64}}(undef, nCells)
     invrMM = Vector{Matrix{Float64}}(undef, nCells)
 
     for Cell in 1:nCells
         # M_ρ = ρ_i * M(0,0) + (Δρ/2) * M(0,1)
         rMM[Cell] = rho_i[Cell] .* M00 .+ (_deltarho/2) .* M01
-        # Precompute inverse: M_ρ^{-1}
+        # Precompute inverse
         invrMM[Cell] = inv(rMM[Cell])
     end
 
     return rMM, invrMM
+end
+
+function dispersionWeightedMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function})
+    nCells = length(rho_i) - 1
+    nNodes = _polyDeg + 1
+    S_g = Vector{Matrix{Float64}}(undef, nCells)
+    quad_nodes, quad_invWeights = lgnodes(_polyDeg)
+    quad_weights = 1.0 ./ quad_invWeights
+    nQuad = length(quad_nodes)
+
+    lagrange_at_quad = zeros(Float64, nNodes, nQuad)
+    for k in 1:nNodes
+        for q in 1:nQuad
+            lagrange_at_quad[k, q] = 1.0
+            for m in 1:nNodes
+                if m != k
+                    lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                end
+            end
+        end
+    end
+
+    dlagrange_at_quad = zeros(Float64, nNodes, nQuad)
+    for q in 1:nQuad
+        for j in 1:nNodes
+            sum_terms = 0.0
+            for n in 1:nNodes
+                if n != j
+                    term = 1.0 / (_nodes[j] - _nodes[n])
+                    for p in 1:nNodes
+                        if p != j && p != n
+                            term *= (quad_nodes[q] - _nodes[p]) / (_nodes[j] - _nodes[p])
+                        end
+                    end
+                    sum_terms += term
+                end
+            end
+            dlagrange_at_quad[j, q] = sum_terms
+        end
+    end
+
+    for Cell in 1:nCells
+        S_g[Cell] = zeros(Float64, nNodes, nNodes)
+        jacobian = _deltarho / 2
+
+        for q in 1:nQuad
+            rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
+            d_rad_q = isa(d_rad, Function) ? d_rad(rho_q) : d_rad
+            weight_factor = quad_weights[q] * rho_q * d_rad_q
+            for j in 1:nNodes
+                for k in 1:nNodes
+                    S_g[Cell][j, k] += weight_factor * dlagrange_at_quad[j, q] * lagrange_at_quad[k, q]
+                end
+            end
+        end
+    end
+    return S_g
 end
 
 end
