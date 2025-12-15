@@ -407,7 +407,7 @@ function weightedMMatrix(_nodes,_polyDeg, rho_i::Vector{Float64}, _deltarho::Flo
     return rMM, invrMM
 end
 
-function dispersionWeightedMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function})
+function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function})
     nCells = length(rho_i) - 1
     nNodes = _polyDeg + 1
     S_g = Vector{Matrix{Float64}}(undef, nCells)
