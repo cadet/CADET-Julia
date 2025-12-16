@@ -86,6 +86,9 @@ mutable struct RadialConvDispOp
     deltarho::Float64
     rho_i::Vector{Float64}
 
+	# Dispersion stiffness matrix (computed based on d_rad)
+	S_g::Vector{Matrix{Float64}}
+
 	# Allocation vectors and matrices
 	mul1::Vector{Float64}
     c_star::Vector{Float64}
@@ -112,6 +115,7 @@ mutable struct RadialConvDispOp
 		MM00 = DGElements.MMatrix(nodes, polyDeg, 0, 0) # Mass matrix 0,0
 		rMM, invrMM = DGElements.weightedMMatrix(nodes, polyDeg, rho_i, deltarho) # hatrho weighted mass matrix and its inverse
 		polyDerM = DGElements.derivativeMatrix(polyDeg, nodes) #derivative matrix
+		S_g = Vector{Matrix{Float64}}(undef, nCells)
 
 		# allocation vectors and matrices
 		mul1 = zeros(Float64, nNodes)
@@ -121,10 +125,9 @@ mutable struct RadialConvDispOp
 		Dg = zeros(Float64, nPoints)
 		h = zeros(Float64, nPoints)
 
-		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, weights, invWeights, invMM, MM01, MM00, rMM, invrMM, polyDerM, deltarho, rho_i, mul1, c_star, g_star, Dc, Dg, h)
+		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, weights, invWeights, invMM, MM01, MM00, rMM, invrMM, polyDerM, deltarho, rho_i, S_g, mul1, c_star, g_star, Dc, Dg, h)
 	end
 end
-
 
 """
     PoreOp
@@ -460,129 +463,6 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::LRM, t, section, sink, switch
 
 		# Mobile phase RHS 
 		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dh - m.Fc * RHS_q[m.idx]
-	end
-	
-    nothing
-end
-
-################################# LUMPED RATE MODEL (rLRM) #################################
-	mutable struct rLRM <: ModelBase
-	# Check parameters
-	# These parameters are the minimum to be specified for the LRM
-	nComp::Int64 
-    col_inner_radius::Float64
-    col_outer_radius::Float64
-	#col_height::Float64
-	cross_section_area::Float64
-    d_rad::Union{Float64, Vector{Float64}, Vector{Function}}
-    eps_c::Float64
-	c0::Union{Float64, Vector{Float64}} # defaults to 0
-	cp0::Union{Float64, Vector{Float64}} # if not specified, defaults to c0
-	q0::Union{Float64, Vector{Float64}} # defaults to 0
-    
-	cIn::Vector{Float64}
-
-	polyDeg::Int64
-	nCells::Int64	
-	
-    # Convection Dispersion properties
-	ConvDispOpInstance::RadialConvDispOp
-
-	# based on the input, remaining properties are calculated in the function LRM
-	#Determined properties 
-	bindStride::Int64
-	adsStride::Int64
-	unitStride::Int64
-
-	# Allocation vectors and matrices
-    idx::UnitRange{Int64}
-	Fc::Float64
-	Fjac::Float64
-	cpp::Vector{Float64}
-    RHS_q::Vector{Float64}
-    qq::Vector{Float64}
-	RHS::Vector{Float64}
-	solution_outlet::Matrix{Float64}
-	solution_times::Vector{Float64}
-	bind::bindingBase
-	
-	
-
-	# Default variables go in the arguments in the LRM
-	function rLRM(; nComp, col_inner_radius, col_outer_radius, d_rad, eps_c, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, cross_section_area=1.0)
-		
-		# Get necessary variables for convection dispersion DG 
-		ConvDispOpInstance = RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius)
-
-		# The bind stride is the stride between each component for binding. For LRM, it is nPoints=(polyDeg + 1) * nCells
-		bindStride = ConvDispOpInstance.nPoints
-		adsStride = 0  #stride to guide to liquid adsorption concentrations i.e., cpp
-		unitStride = adsStride + bindStride*nComp*2
-
-		# allocation vectors and matrices
-		idx = 1:ConvDispOpInstance.nPoints
-		Fc = (1-eps_c)/eps_c
-		Fjac = Fc
-		cpp = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
-		RHS_q = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
-		qq = zeros(Float64, ConvDispOpInstance.nPoints * nComp)
-		RHS = zeros(Float64, adsStride + 2*nComp*bindStride)
-		cIn = zeros(Float64, nComp)
-		
-		# if the radial dispersion is specified for a single component or function, assume they are the same for all components
-		if typeof(d_rad) == Float64
-			d_rad = ones(Float64,nComp) * d_rad
-		elseif isa(d_rad, Function)
-			d_rad = fill(d_rad, nComp)
-		end
-
-		# Set initial condition vectors 
-		c0, cp0, q0 = initial_condition_specification(nComp, ConvDispOpInstance, bindStride, c0, cp0, q0)
-		
-		# Solution_outlet as well 
-		solution_outlet = zeros(Float64,1,nComp)
-		solution_times = Float64[]
-
-		# Default binding - assumes linear with zero binding 
-		bind = Linear(
-					ka = zeros(Float64,nComp),
-					kd = zeros(Float64,nComp),
-					is_kinetic = true, #if false, a high kkin is set to approximate rapid eq. if true, kkin=1
-					nBound = zeros(Bool,nComp), # Number of bound components, specify non-bound states by a zero, defaults to assume all bound states e.g., [1,0,1]
-					bindStride = bindStride, # Not necessary for Linear model, only for Langmuir and SMA
-					# nBound =  [1,0,1,1] # Specify non-bound states by a zero, defaults to assume all bound states
-					)
-		
-		# The new commando must match the order of the elements in the struct!
-		new(nComp, col_inner_radius, col_outer_radius, cross_section_area, d_rad, eps_c, c0, cp0, q0, cIn, polyDeg, nCells, ConvDispOpInstance, bindStride, adsStride, unitStride, idx, Fc, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
-	end
-end
-
-
-# Define a function to compute the transport term for the rLRM
-function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switches, idx_units) 
-	# section = i from call 
-	# sink is the unit i.e., h from previous call
-	
-	# Determining inlet velocity if specified dynamically
-	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
-
-	@inbounds for j = 1:m.nComp
-
-		# Indices
-		# For the indicies regarding mobile phase, + idx_units[sink] must be added to get the right column 
-		# For the stationary phase, RHS_q is already a slice of the stationary phase of the right column
-		m.idx =  1 + (j-1) * m.ConvDispOpInstance.nPoints : m.ConvDispOpInstance.nPoints + (j-1) * m.ConvDispOpInstance.nPoints
-
-		# inlet conc for comp j
-		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j])
-
-		# Convection Dispersion term
-		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp]
-		RadialConvDispOperatorDG.radialresidualImpl!(m.ConvDispOpInstance.Dc, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nNodes, m.ConvDispOpInstance.nCells, m.ConvDispOpInstance.deltarho, m.polyDeg, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.ConvDispOpInstance.MM01, m.ConvDispOpInstance.MM00, m.ConvDispOpInstance.rMM, m.ConvDispOpInstance.invrMM, m.ConvDispOpInstance.nodes, m.ConvDispOpInstance.weights, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_rad[j], m.ConvDispOpInstance.rho_i, m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.g_star, m.ConvDispOpInstance.Dg, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1)
-
-		# Mobile phase RHS
-		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dc - m.Fc * RHS_q[m.idx]
 	end
 	
     nothing
@@ -1115,6 +995,9 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 		# inlet conc for comp j
 		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j])
 
+		# Compute S_g for this component (uses smart dispatch: analytical for const, quadrature for function)
+		m.ConvDispOpInstance.S_g = DGElements.dispMMatrix(m.ConvDispOpInstance.nodes, m.polyDeg, m.ConvDispOpInstance.rho_i, m.ConvDispOpInstance.deltarho, m.d_rad[j], m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.rMM)
+
 		# Convection Dispersion term
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp]
 		RadialConvDispOperatorDG.radialresidualImpl!(m.ConvDispOpInstance.Dc, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nNodes, m.ConvDispOpInstance.nCells, m.ConvDispOpInstance.deltarho, m.polyDeg, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.ConvDispOpInstance.MM01, m.ConvDispOpInstance.MM00, m.ConvDispOpInstance.rMM, m.ConvDispOpInstance.invrMM, m.ConvDispOpInstance.S_g, m.ConvDispOpInstance.nodes, m.ConvDispOpInstance.weights, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.d_rad[j], m.ConvDispOpInstance.rho_i, m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.g_star, m.ConvDispOpInstance.Dg, m.ConvDispOpInstance.h, m.ConvDispOpInstance.mul1)
@@ -1275,6 +1158,9 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 
 		# inlet conc for comp j
 		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j])
+
+		# Compute S_g for this component (uses smart dispatch: analytical for const, quadrature for function)
+		m.ConvDispOpInstance.S_g = DGElements.dispMMatrix(m.ConvDispOpInstance.nodes, m.polyDeg, m.ConvDispOpInstance.rho_i, m.ConvDispOpInstance.deltarho, m.d_rad[j], m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.rMM)
 
 		# Convection Dispersion term
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp]

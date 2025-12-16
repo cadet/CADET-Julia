@@ -118,155 +118,6 @@ function cgnodes(N)
     return x, 1 ./ w
 end
 
-# Chebyshev polynomial evaluation using three-term recurrence (Algorithm 28 from Kopriva 2009)
-function chebyshev_poly(x, N)
-    # Evaluate Chebyshev polynomials T_0, T_1, ..., T_N at point x
-    # Returns vector of length N+1
-    T = zeros(N + 1)
-
-    # Initial values
-    T[1] = 1.0  # T_0(x) = 1
-    if N >= 1
-        T[2] = x  # T_1(x) = x
-    end
-
-    # Three-term recurrence: T_{n+1}(x) = 2*x*T_n(x) - T_{n-1}(x)
-    for n in 1:(N-1)
-        T[n+2] = 2.0 * x * T[n+1] - T[n]
-    end
-
-    return T
-end
-
-# Chebyshev polynomial first derivative evaluation
-function chebyshev_poly_derivative(x, N)
-    # Evaluate first derivatives T'_0, T'_1, ..., T'_N at point x
-    # Returns vector of length N+1
-    T = chebyshev_poly(x, N)
-    dT = zeros(N + 1)
-
-    # Initial values
-    dT[1] = 0.0  # T'_0(x) = 0
-    if N >= 1
-        dT[2] = 1.0  # T'_1(x) = 1
-    end
-
-    # Recurrence relation: T'_{n+1}(x) = 2*T_n(x) + 2*x*T'_n(x) - T'_{n-1}(x)
-    for n in 1:(N-1)
-        dT[n+2] = 2.0 * T[n+1] + 2.0 * x * dT[n+1] - dT[n]
-    end
-
-    return dT
-end
-
-# Chebyshev polynomial second derivative evaluation
-function chebyshev_poly_second_derivative(x, N)
-    # Evaluate second derivatives T''_0, T''_1, ..., T''_N at point x
-    # Returns vector of length N+1
-    T = chebyshev_poly(x, N)
-    dT = chebyshev_poly_derivative(x, N)
-    d2T = zeros(N + 1)
-
-    # Initial values
-    d2T[1] = 0.0  # T''_0(x) = 0
-    if N >= 1
-        d2T[2] = 0.0  # T''_1(x) = 0
-    end
-    if N >= 2
-        d2T[3] = 4.0  # T''_2(x) = 4
-    end
-
-    # Recurrence: T''_{n+1}(x) = 4*T'_n(x) + 2*x*T''_n(x) - T''_{n-1}(x)
-    for n in 2:(N-1)
-        d2T[n+2] = 4.0 * dT[n+1] + 2.0 * x * d2T[n+1] - d2T[n]
-    end
-
-    return d2T
-end
-
-# Chebyshev polynomial arbitrary derivative evaluation
-function chebyshev_poly_nth_derivative(x, N, n_deriv)
-    # Evaluate nth derivatives at point x
-    # n_deriv: order of derivative
-    if n_deriv == 0
-        return chebyshev_poly(x, N)
-    elseif n_deriv == 1
-        return chebyshev_poly_derivative(x, N)
-    elseif n_deriv == 2
-        return chebyshev_poly_second_derivative(x, N)
-    else
-        # For higher derivatives, use the general recurrence
-        error("Derivatives of order > 2 not yet implemented")
-    end
-end
-
-# Chebyshev Vandermonde matrix (based on Kopriva 2009)
-function getVandermonde_CHEBYSHEV(_nodes, _polyDeg)
-    N1 = length(_nodes)
-    V = zeros(Float64, N1, N1)
-
-    # Fill Vandermonde matrix: V[i,j] = T_{j-1}(x_i)
-    for i in 1:N1
-        T = chebyshev_poly(_nodes[i], _polyDeg)
-        V[i, :] = T
-    end
-
-    return V
-end
-
-# Normalized/Orthogonal Chebyshev Vandermonde matrix
-function getVandermonde_CHEBYSHEV_NORMALIZED(_nodes, _polyDeg)
-    N1 = length(_nodes)
-    V = zeros(Float64, N1, N1)
-
-    # Normalization factors for orthogonal Chebyshev polynomials
-    # ∫_{-1}^{1} T_n(x) T_m(x) / √(1-x²) dx = 0 if n≠m, π/2 if n=m>0, π if n=m=0
-    norm = zeros(N1)
-    norm[1] = sqrt(pi)  # ||T_0||
-    for n in 1:_polyDeg
-        norm[n+1] = sqrt(pi / 2.0)  # ||T_n|| for n > 0
-    end
-
-    # Fill normalized Vandermonde matrix
-    for i in 1:N1
-        T = chebyshev_poly(_nodes[i], _polyDeg)
-        for j in 1:N1
-            V[i, j] = T[j] / norm[j]
-        end
-    end
-
-    return V
-end
-
-# Chebyshev derivative matrix (Vandermonde approach)
-function chebyshev_derivative_vandermonde(_nodes, _polyDeg)
-    N1 = length(_nodes)
-    DV = zeros(Float64, N1, N1)
-
-    # Fill derivative Vandermonde matrix: DV[i,j] = T'_{j-1}(x_i)
-    for i in 1:N1
-        dT = chebyshev_poly_derivative(_nodes[i], _polyDeg)
-        DV[i, :] = dT
-    end
-
-    return DV
-end
-
-# Chebyshev mass matrix (for Gauss or Gauss-Lobatto quadrature)
-function chebyshev_mass_matrix(_nodes, _polyDeg)
-    # M = V^T * V for normalized Chebyshev basis
-    V = getVandermonde_CHEBYSHEV_NORMALIZED(_nodes, _polyDeg)
-    return V' * V
-end
-
-# Chebyshev stiffness matrix
-function chebyshev_stiffness_matrix(_nodes, _polyDeg)
-    # S = V^T * D * V where D is the derivative matrix
-    V = getVandermonde_CHEBYSHEV_NORMALIZED(_nodes, _polyDeg)
-    D = derivativeMatrix(_polyDeg, _nodes)
-    return V' * D * V
-end
-
 
 # computation of barycentric weights for fast polynomial evaluation
 # @param [in] baryWeights vector to store barycentric weights. Must already be initialized with ones!
@@ -407,60 +258,67 @@ function weightedMMatrix(_nodes,_polyDeg, rho_i::Vector{Float64}, _deltarho::Flo
     return rMM, invrMM
 end
 
-function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function})
+function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function}, _polyDerM::Matrix{Float64}, rMM::Vector{Matrix{Float64}})
     nCells = length(rho_i) - 1
     nNodes = _polyDeg + 1
     S_g = Vector{Matrix{Float64}}(undef, nCells)
-    quad_nodes, quad_invWeights = lgnodes(_polyDeg)
-    quad_weights = 1.0 ./ quad_invWeights
-    nQuad = length(quad_nodes)
 
-    lagrange_at_quad = zeros(Float64, nNodes, nQuad)
-    for k in 1:nNodes
-        for q in 1:nQuad
-            lagrange_at_quad[k, q] = 1.0
-            for m in 1:nNodes
-                if m != k
-                    lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
-                end
-            end
+    # Check if d_rad is a constant or a function
+    if isa(d_rad, Float64)
+        # Use analytical formula for constant d_rad: S_g = d_rad * D^T * M_ρ * D
+        for Cell in 1:nCells
+            S_g[Cell] = d_rad * transpose(_polyDerM) * rMM[Cell] * _polyDerM
         end
-    end
+    else
+        # Use quadrature integration for spatially varying d_rad
+        quad_nodes, quad_invWeights = lgnodes(_polyDeg)
+        quad_weights = 1.0 ./ quad_invWeights
+        nQuad = length(quad_nodes)
 
-    dlagrange_at_quad = zeros(Float64, nNodes, nQuad)
-    for q in 1:nQuad
-        for j in 1:nNodes
-            sum_terms = 0.0
-            for n in 1:nNodes
-                if n != j
-                    term = 1.0 / (_nodes[j] - _nodes[n])
-                    for p in 1:nNodes
-                        if p != j && p != n
-                            term *= (quad_nodes[q] - _nodes[p]) / (_nodes[j] - _nodes[p])
-                        end
+        lagrange_at_quad = zeros(Float64, nNodes, nQuad)
+        for k in 1:nNodes
+            for q in 1:nQuad
+                lagrange_at_quad[k, q] = 1.0
+                for m in 1:nNodes
+                    if m != k
+                        lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
                     end
-                    sum_terms += term
                 end
             end
-            dlagrange_at_quad[j, q] = sum_terms
         end
-    end
 
-    for Cell in 1:nCells
-        S_g[Cell] = zeros(Float64, nNodes, nNodes)
-        jacobian = _deltarho / 2
-
+        dlagrange_at_quad = zeros(Float64, nNodes, nQuad)
         for q in 1:nQuad
-            rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
-            d_rad_q = isa(d_rad, Function) ? d_rad(rho_q) : d_rad
-            weight_factor = quad_weights[q] * rho_q * d_rad_q
             for j in 1:nNodes
-                for k in 1:nNodes
-                    S_g[Cell][j, k] += weight_factor * dlagrange_at_quad[j, q] * lagrange_at_quad[k, q]
+                sum_terms = 0.0
+                for n in 1:nNodes
+                    if n != j
+                        term = 1.0 / (_nodes[j] - _nodes[n])
+                        for p in 1:nNodes
+                            if p != j && p != n
+                                term *= (quad_nodes[q] - _nodes[p]) / (_nodes[j] - _nodes[p])
+                            end
+                        end
+                        sum_terms += term
+                    end
                 end
+                dlagrange_at_quad[j, q] = sum_terms
             end
         end
+
+        for Cell in 1:nCells
+                S_g[Cell] = zeros(Float64, nNodes, nNodes)
+                jacobian = _deltarho / 2
+
+                for q in 1:nQuad
+                    rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
+                    d_rad_q = d_rad(rho_q)
+                    weight_factor = quad_weights[q] * rho_q * d_rad_q
+                    S_g[Cell] .+= weight_factor .* (dlagrange_at_quad[:, q] * lagrange_at_quad[:, q]')
+                end
+        end
     end
+
     return S_g
 end
 
