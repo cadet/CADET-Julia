@@ -417,16 +417,33 @@ function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float6
                 for q in 1:nQuad
                     rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
                     d_rad_q = d_rad(rho_q)
-                    # We need: S_g[j,k] = ∫ ρ*D*(dL_j/dρ)*L_k dρ
-                    # dL/dρ = (dL/dξ) / J where J = Δρ/2
-                    # Transform to ref coords: ∫ ρ*D*(dL/dξ / J)*L * J dξ = ∫ ρ*D*(dL/dξ)*L dξ
-                    # The Jacobians cancel! So we integrate dL/dξ in reference space with weight ρ*D
                     weight_factor = quad_weights[q] * rho_q * d_rad_q
                     S_g[Cell] .+= weight_factor .* (dlagrange_at_quad[:, q] * lagrange_at_quad[:, q]')
                 end
         end
     end
     return S_g
+end
+
+function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, k_f::Union{Float64, Function})
+    nCells = length(rho_i) - 1
+    nNodes = _polyDeg + 1
+    # Use quadrature integration for spatially varying k_f
+    quad_nodes, quad_invWeights = lgnodes(_polyDeg)
+    quad_weights = 1.0 ./ quad_invWeights
+    nQuad = length(quad_nodes)
+
+    lagrange_at_quad = zeros(Float64, nNodes, nQuad)
+    for k in 1:nNodes
+        for q in 1:nQuad
+            lagrange_at_quad[k, q] = 1.0
+            for m in 1:nNodes
+                if m != k
+                    lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                end
+            end
+        end
+    end
 end
 
 end

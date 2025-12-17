@@ -218,7 +218,7 @@ mutable struct FilmDiffOp
 	function FilmDiffOp(R_p::Float64, k_f::Union{Float64, Function}, nPoints::Int64, nComp::Int64, polyDeg::Int64, nodes::Vector{Float64}, rho_i::Vector{Float64}, deltarho::Float64; quadrature_type::Symbol=:gauss)
 		# Compute base mass transfer coefficient
 		Q = (3.0 / R_p)
-		M_K = DGElements.filmDiffMMatrix(nodes, polyDeg, rho_i, deltarho, k_f, quadrature_type=quadrature_type)
+		M_K = DGElements.filmDiffMMatrix(nodes, polyDeg, rho_i, deltarho, k_f)
 		_, invrMM = DGElements.weightedMMatrix(nodes, polyDeg, rho_i, deltarho)
 
 		# Allocate buffer
