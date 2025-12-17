@@ -13,6 +13,9 @@ module RadialConvDispOperatorDG
         # Numerical fluxes c*
         interfaceFluxAuxiliary!(c_star, y, idx, _strideNode, _strideCell, _nCells)
 
+        # Apply inlet boundary condition
+        c_star[1] = cIn
+
         # Lift face terms into g
         surfaceIntegraly!(Dg, y, idx, _strideNode, _strideCell, 1, _nNodes, c_star, _nCells, _nNodes, _invMM, _polyDeg)
 
