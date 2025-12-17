@@ -83,11 +83,9 @@ mutable struct RadialConvDispOp
 	rMM::Vector{Matrix{Float64}}
 	invrMM::Vector{Matrix{Float64}}
 	polyDerM::Matrix{Float64}
+	S_g::Vector{Matrix{Float64}}
     deltarho::Float64
     rho_i::Vector{Float64}
-
-	# Dispersion stiffness matrix (computed based on d_rad)
-	S_g::Vector{Matrix{Float64}}
 
 	# Allocation vectors and matrices
 	mul1::Vector{Float64}
@@ -870,7 +868,6 @@ mutable struct rLRM <: ModelBase
     col_Rho_c::Float64
     col_Rho::Float64
 	col_height::Float64
-	cross_section_area::Float64
     d_rad::Union{Float64, Vector{Float64}, Vector{Function}}
     eps_c::Float64
 	c0::Union{Float64, Vector{Float64}} # defaults to 0
