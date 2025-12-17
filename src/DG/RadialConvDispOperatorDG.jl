@@ -68,21 +68,13 @@ module RadialConvDispOperatorDG
 
         @inbounds for Cell in 1:_nCells
             idx_range = (Cell - 1) * _nNodes + 1 : Cell * _nNodes
-
             # Convection term: D^T * M^{(0,0)} * v * c
-            # Step by step to avoid buffer conflicts:
             # temp1 = v * c
             temp1 .= v .* @view(y[base + idx_range[1] - 1 : base + idx_range[end] - 1])
             # temp2 = M^{(0,0)} * (v*c)
             mul!(temp2, _MM00, temp1)
-            # vc_contrib = D^T * temp2
-            vc_contrib = transpose(_polyDerM) * temp2
-
-            # Apply M_ρ^{-1}
-            invrMM_vol = _invrMM[Cell] * vc_contrib
-
-            # Add to residual
-            broadcast!(+, @view(Dc[idx_range]), @view(Dc[idx_range]), invrMM_vol)
+            # Apply M_ρ^{-1} * (D^T * temp2)
+            broadcast!(+, @view(Dc[idx_range]), @view(Dc[idx_range]), _invrMM[Cell] * (transpose(_polyDerM) * temp2))
         end
 
         return nothing
@@ -91,18 +83,8 @@ module RadialConvDispOperatorDG
     # Volume integral - Dispersion term: computes -M_ρ^{-1} * D * S_g * g
     @inline function volumeIntegralDispersion!(Dc, g::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, S_g::Vector{Matrix{Float64}})
         @inbounds for Cell in 1:_nCells
-            idx_range = (Cell - 1) * _nNodes + 1 : Cell * _nNodes
-
-            # Dispersion term: S_g * g
-            Sg_g_contrib = S_g[Cell] * @view(g[idx_range])
-
-            # Apply M_ρ^{-1}
-            invrMM_vol = _invrMM[Cell] * Sg_g_contrib
-
-            # Subtract from residual (note the minus sign)
-            broadcast!(-, @view(Dc[idx_range]), @view(Dc[idx_range]), invrMM_vol)
+            broadcast!(-, @view(Dc[(Cell - 1) * _nNodes + 1 : Cell * _nNodes]), @view(Dc[(Cell - 1) * _nNodes + 1 : Cell * _nNodes]), _invrMM[Cell] * (S_g[Cell] * @view(g[(Cell - 1) * _nNodes + 1 : Cell * _nNodes])))
         end
-
         return nothing
     end
 
@@ -127,37 +109,31 @@ module RadialConvDispOperatorDG
         end
         nothing
     end
-"""
-    # Exact Integration lifting of Surface M_ρ{-1} [B(v c_internal - v c*) - B_g(0 - g*)]
-    # Compute: M_ρ^{-1} * B * [(v * c_internal - v * c_numerical) - (0 - g*)]
-    @inline function surfaceIntegral!(Dc::Vector{Float64}, y, idx, _strideNode::Int, _strideCell::Int, _polyDeg::Int, nNodes::Int, _nCells::Int, c_star::Vector{Float64}, g_star::Vector{Float64}, _invrMM::Vector{Matrix{Float64}}, v::Float64)
-        base = first(idx)
-        @inbounds for Cell in 1:_nCells
-            # Get internal trace values at left and right faces of this cell
-            c_left_internal = y[base + (Cell - 1) * _strideCell]  # first node of cell
-            c_right_internal = y[base + (Cell - 1) * _strideCell + _polyDeg * _strideNode]  # last node of cell
 
-            @simd for Node in 1:nNodes
-                Dc[(Cell - 1) * nNodes + Node] +=
-                    (_invrMM[Cell][Node, 1])   * (v * c_left_internal - c_star[Cell] + g_star[Cell]) -
-                    (_invrMM[Cell][Node, end]) * (v * c_right_internal - c_star[Cell + 1] + g_star[Cell + 1])
-            end
-        end
-        return nothing
-    end
-"""
+#    # Exact Integration lifting of Surface M_ρ{-1} [B(v c_internal - v c*) - B_g(0 - g*)]
+#    # Compute: M_ρ^{-1} * B * [(v * c_internal - v * c_numerical) - (0 - g*)]
+#    @inline function surfaceIntegral!(Dc::Vector{Float64}, y, idx, _strideNode::Int, _strideCell::Int, _polyDeg::Int, nNodes::Int, _nCells::Int, c_star::Vector{Float64}, g_star::Vector{Float64}, _invrMM::Vector{Matrix{Float64}}, v::Float64)
+#        base = first(idx)
+#        @inbounds for Cell in 1:_nCells
+#            # Get internal trace values at left and right faces of this cell
+#            c_left_internal = y[base + (Cell - 1) * _strideCell]  # first node of cell
+#            c_right_internal = y[base + (Cell - 1) * _strideCell + _polyDeg * _strideNode]  # last node of cell
+#
+#            @simd for Node in 1:nNodes
+#                Dc[(Cell - 1) * nNodes + Node] +=
+#                    (_invrMM[Cell][Node, 1])   * (v * c_left_internal - c_star[Cell] + g_star[Cell]) -
+#                    (_invrMM[Cell][Node, end]) * (v * c_right_internal - c_star[Cell + 1] + g_star[Cell + 1])
+#            end
+#        end
+#        return nothing
+#    end
 
     # Surface integral - Convection term: Dc -= M_ρ^{-1} * B * (v*c*)
     @inline function surfaceIntegralConvection!(Dc, c_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, v::Float64)
         @inbounds for Cell in 1:_nCells
-            # Convection flux at boundaries: v*c*
-            flux_left = v * c_star[Cell]
-            flux_right = v * c_star[Cell+1]
-
             @inbounds for Node in 1:_nNodes
                 idx = (Cell-1) * _nNodes + Node
-                # B_left = -1, B_right = +1
-                Dc[idx] -= (_invrMM[Cell][Node, 1]) * (-flux_left) + (_invrMM[Cell][Node, end]) * (flux_right)
+                Dc[idx] -= (_invrMM[Cell][Node, 1]) * (- v * c_star[Cell]) + (_invrMM[Cell][Node, end]) * (v * c_star[Cell+1])
             end
         end
         return nothing
@@ -166,14 +142,9 @@ module RadialConvDispOperatorDG
     # Surface integral - Dispersion term: Dc -= M_ρ^{-1} * B * (-rho_i*D*g*)
     @inline function surfaceIntegralDispersion!(Dc, g_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, rho_i::Vector{Float64}, d_rad::Float64)
         @inbounds for Cell in 1:_nCells
-            # Dispersion flux at boundaries: -rho_i*D*g*
-            flux_left = -rho_i[Cell] * d_rad * g_star[Cell]
-            flux_right = -rho_i[Cell+1] * d_rad * g_star[Cell+1]
-
             @inbounds for Node in 1:_nNodes
                 idx = (Cell-1) * _nNodes + Node
-                # B_left = -1, B_right = +1
-                Dc[idx] -= (_invrMM[Cell][Node, 1]) * (-flux_left) + (_invrMM[Cell][Node, end]) * (flux_right)
+                Dc[idx] -= (_invrMM[Cell][Node, 1]) * (rho_i[Cell] * d_rad * g_star[Cell]) + (_invrMM[Cell][Node, end]) * (-rho_i[Cell+1] * d_rad * g_star[Cell+1])
             end
         end
         return nothing

@@ -466,6 +466,7 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::LRM, t, section, sink, switch
     nothing
 end
 
+
 ################################# LUMPED RATE MODEL WITH PORES (LRMP) #################################
 """
     LRMP <: ModelBase
