@@ -1,6 +1,28 @@
+"""
+create_units(model::Union{Dict, OrderedDict})
 
+Constructs and initializes the simulation units (inlets, outlets, columns) from a CADET model dictionary.
 
+# Arguments
+- `model::Union{Dict, OrderedDict}`: Parsed CADET model input, see test folder for examples.
+
+# Returns
+A tuple `(inlets, outlets, columns, switches, solverOptions)` where:
+- `inlets`: Tuple of inlet unit objects.
+- `outlets`: Tuple of outlet unit objects.
+- `columns`: Tuple of column unit objects (e.g., LRM, LRMP, GRM, cstr).
+- `switches`: Switches object containing section and connection information.
+- `solverOptions`: SolverCache object with solver configuration and initial conditions.
+
+# Details
+- Parses the model structure to instantiate all units and their connections.
+- Handles different unit types (INLET, OUTLET, LRM, LRMP, GRM, cstr).
+- Sets up connections, flow rates, and initial conditions.
+- Configures solver tolerances and time points.
+
+"""
 function create_units(model::Union{Dict, OrderedDict})
+    
     units = Dict{String, Any}()
     inlets = []
     columns = []

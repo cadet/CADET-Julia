@@ -425,25 +425,50 @@ function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float6
     return S_g
 end
 
-function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, k_f::Union{Float64, Function})
+function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, k_f::Union{Float64, Function}, rMM::Vector{Matrix{Float64}})
     nCells = length(rho_i) - 1
     nNodes = _polyDeg + 1
-    # Use quadrature integration for spatially varying k_f
-    quad_nodes, quad_invWeights = lgnodes(_polyDeg)
-    quad_weights = 1.0 ./ quad_invWeights
-    nQuad = length(quad_nodes)
+    M_K = Vector{Matrix{Float64}}(undef, nCells)
 
-    lagrange_at_quad = zeros(Float64, nNodes, nQuad)
-    for k in 1:nNodes
-        for q in 1:nQuad
-            lagrange_at_quad[k, q] = 1.0
-            for m in 1:nNodes
-                if m != k
-                    lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+    # Check if k_f is a constant or a function
+    if isa(k_f, Float64)
+        # Use analytical formula for constant k_f: M_K = k_f * M_ρ
+        # This computes: M_K[j,k] = ∫ L_j * ρ * k_f * L_k dρ = k_f * M_ρ
+        for Cell in 1:nCells
+            M_K[Cell] = k_f * rMM[Cell]
+        end
+    else
+        # Use quadrature integration for spatially varying k_f
+        quad_nodes, quad_invWeights = lgnodes(_polyDeg)
+        quad_weights = 1.0 ./ quad_invWeights
+        nQuad = length(quad_nodes)
+
+        lagrange_at_quad = zeros(Float64, nNodes, nQuad)
+        for k in 1:nNodes
+            for q in 1:nQuad
+                lagrange_at_quad[k, q] = 1.0
+                for m in 1:nNodes
+                    if m != k
+                        lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                    end
                 end
             end
         end
+
+        for Cell in 1:nCells
+            M_K[Cell] = zeros(Float64, nNodes, nNodes)
+            jacobian = _deltarho / 2  # dρ/dξ
+
+            for q in 1:nQuad
+                rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
+                k_f_q = k_f(rho_q)
+                weight_factor = quad_weights[q] * rho_q * k_f_q
+                M_K[Cell] .+= weight_factor .* (lagrange_at_quad[:, q] * lagrange_at_quad[:, q]')
+            end
+        end
     end
+
+    return M_K
 end
 
 end
