@@ -258,5 +258,217 @@ function second_order_stiff_matrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return Transpose(derivativeMatrix(_polyDeg,_nodes)) * MMatrix(_nodes,_polyDeg, alpha, beta) * derivativeMatrix(_polyDeg,_nodes)
 end
 
+# Legendre-Gauss (LG) nodes and weights
+function lgnodes(N)
+    N1 = N + 1
+
+    x = zeros(N1)
+    for i in 1:N1
+        x[i] = -cos((2*i - 1) * pi / (2*N1))
+    end
+
+    # Legendre polynomial values
+    P = zeros(N1, N1 + 1)
+
+    # Newton-Raphson iteration to find roots of P_{N+1}(x)
+    xold = ones(N1) .* 2.0
+
+    while maximum(abs.(x .- xold)) > eps()
+        xold[:] = x
+
+        P[:, 1] .= 1.0
+        P[:, 2] = x
+
+        # Three-term recurrence for Legendre polynomials
+        for k = 2:N1
+            P[:, k + 1] = ((2*k - 1) .* x .* P[:, k] - (k - 1) .* P[:, k - 1]) ./ k
+        end
+
+        # Newton-Raphson update: x_{n+1} = x_n - P_{N+1}(x_n) / P'_{N+1}(x_n)
+        # where P'_{N+1}(x) = (N+1) / (x^2 - 1) * [x * P_{N+1}(x) - P_N(x)]
+        for i in 1:N1
+            dP = (N1) / (x[i]^2 - 1.0) * (x[i] * P[i, N1 + 1] - P[i, N1])
+            x[i] = xold[i] - P[i, N1 + 1] / dP
+        end
+    end
+
+    # Compute weights: w_i = 2 / [(1 - x_i^2) * (P'_{N+1}(x_i))^2]
+    w = zeros(N1)
+    for i in 1:N1
+        dP = (N1) / (x[i]^2 - 1.0) * (x[i] * P[i, N1 + 1] - P[i, N1])
+        w[i] = 2.0 / ((1.0 - x[i]^2) * dP^2)
+    end
+
+    return x, 1 ./ w
+end
+
+# Chebyshev-Gauss-Lobatto nodes and weights
+function cglnodes(N)
+    N1 = N + 1
+
+    # Chebyshev-Gauss-Lobatto nodes: x_j = -cos(π*j/N)
+    x = zeros(N1)
+    for j in 0:N
+        x[j+1] = -cos(pi * j / N)
+    end
+
+    # Weights for Chebyshev-Gauss-Lobatto quadrature
+    w = zeros(N1)
+    w[1] = pi / (2 * N)
+    w[N1] = pi / (2 * N)
+    for j in 1:(N-1)
+        w[j+1] = pi / N
+    end
+
+    return x, 1 ./ w
+end
+
+# Chebyshev-Gauss nodes and weights
+function cgnodes(N)
+    # N+1 interior nodes
+    N1 = N + 1
+
+    # Chebyshev-Gauss nodes: x_j = -cos(π*(2j+1)/(2N+2))
+    x = zeros(N1)
+    for j in 0:N
+        x[j+1] = -cos(pi * (2*j + 1) / (2 * N1))
+    end
+
+    # Weights for Chebyshev-Gauss quadrature (all equal)
+    w = fill(pi / N1, N1)
+
+    return x, 1 ./ w
+end
+
+# hatrho Weighted mass matrix and its inverse
+function weightedMMatrix(_nodes,_polyDeg, rho_i::Vector{Float64}, _deltarho::Float64)
+    # Precompute base mass matrices once
+    M00 = MMatrix(_nodes, _polyDeg, 0, 0)
+    M01 = MMatrix(_nodes, _polyDeg, 0, 1)
+
+    # Compute weighted mass matrix and its inverse for each cell
+    nCells = length(rho_i) - 1
+    rMM = Vector{Matrix{Float64}}(undef, nCells)
+    invrMM = Vector{Matrix{Float64}}(undef, nCells)
+
+    for Cell in 1:nCells
+        # M_ρ = ρ_i * M(0,0) + (Δρ/2) * M(0,1)
+        rMM[Cell] = rho_i[Cell] .* M00 .+ (_deltarho/2) .* M01
+        # Precompute inverse
+        invrMM[Cell] = inv(rMM[Cell])
+    end
+
+    return rMM, invrMM
+end
+
+function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function}, _polyDerM::Matrix{Float64}, rMM::Vector{Matrix{Float64}})
+    nCells = length(rho_i) - 1
+    nNodes = _polyDeg + 1
+    S_g = Vector{Matrix{Float64}}(undef, nCells)
+
+    # Check if d_rad is a constant or a function
+    if isa(d_rad, Float64)
+        # Use analytical formula for constant d_rad: S_g = d_rad * D^T * M_ρ
+        # This computes: S_g[j,k] = ∫ (dL_j/dρ) * ρ * D * L_k dρ = D * D^T * M_ρ
+        for Cell in 1:nCells
+            S_g[Cell] = d_rad * transpose(_polyDerM) * rMM[Cell]
+        end
+    else
+        # Use quadrature integration for spatially varying d_rad
+        quad_nodes, quad_invWeights = lgnodes(_polyDeg)
+        quad_weights = 1.0 ./ quad_invWeights
+        nQuad = length(quad_nodes)
+
+        lagrange_at_quad = zeros(Float64, nNodes, nQuad)
+        for k in 1:nNodes
+            for q in 1:nQuad
+                lagrange_at_quad[k, q] = 1.0
+                for m in 1:nNodes
+                    if m != k
+                        lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                    end
+                end
+            end
+        end
+
+        dlagrange_at_quad = zeros(Float64, nNodes, nQuad)
+        for q in 1:nQuad
+            for j in 1:nNodes
+                sum_terms = 0.0
+                for n in 1:nNodes
+                    if n != j
+                        term = 1.0 / (_nodes[j] - _nodes[n])
+                        for p in 1:nNodes
+                            if p != j && p != n
+                                term *= (quad_nodes[q] - _nodes[p]) / (_nodes[j] - _nodes[p])
+                            end
+                        end
+                        sum_terms += term
+                    end
+                end
+                dlagrange_at_quad[j, q] = sum_terms
+            end
+        end
+
+        for Cell in 1:nCells
+                S_g[Cell] = zeros(Float64, nNodes, nNodes)
+                jacobian = _deltarho / 2  # dρ/dξ
+
+                for q in 1:nQuad
+                    rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
+                    d_rad_q = d_rad(rho_q)
+                    weight_factor = quad_weights[q] * rho_q * d_rad_q
+                    S_g[Cell] .+= weight_factor .* (dlagrange_at_quad[:, q] * lagrange_at_quad[:, q]')
+                end
+        end
+    end
+    return S_g
+end
+
+function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, k_f::Union{Float64, Function}, rMM::Vector{Matrix{Float64}})
+    nCells = length(rho_i) - 1
+    nNodes = _polyDeg + 1
+    M_K = Vector{Matrix{Float64}}(undef, nCells)
+
+    # Check if k_f is a constant or a function
+    if isa(k_f, Float64)
+        # Use analytical formula for constant k_f: M_K = k_f * M_ρ
+        # This computes: M_K[j,k] = ∫ L_j * ρ * k_f * L_k dρ = k_f * M_ρ
+        for Cell in 1:nCells
+            M_K[Cell] = k_f * rMM[Cell]
+        end
+    else
+        # Use quadrature integration for spatially varying k_f
+        quad_nodes, quad_invWeights = lgnodes(_polyDeg)
+        quad_weights = 1.0 ./ quad_invWeights
+        nQuad = length(quad_nodes)
+
+        lagrange_at_quad = zeros(Float64, nNodes, nQuad)
+        for k in 1:nNodes
+            for q in 1:nQuad
+                lagrange_at_quad[k, q] = 1.0
+                for m in 1:nNodes
+                    if m != k
+                        lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                    end
+                end
+            end
+        end
+
+        for Cell in 1:nCells
+            M_K[Cell] = zeros(Float64, nNodes, nNodes)
+            jacobian = _deltarho / 2  # dρ/dξ
+
+            for q in 1:nQuad
+                rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
+                k_f_q = k_f(rho_q)
+                weight_factor = quad_weights[q] * rho_q * k_f_q
+                M_K[Cell] .+= weight_factor .* (lagrange_at_quad[:, q] * lagrange_at_quad[:, q]')
+            end
+        end
+    end
+
+    return M_K
+end
 
 end
