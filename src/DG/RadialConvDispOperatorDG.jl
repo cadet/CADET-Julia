@@ -23,16 +23,16 @@ module RadialConvDispOperatorDG
         @. _h = map * Dg
 
         # Compute complete numerical flux: h* = v*c* - rho_i*D_rad*g*
-        interfaceFlux!(h_star, y, idx, d_rad, _h, v, _nCells, _nCells * _nNodes, _deltarho, cIn, _strideNode, _strideCell, 1, _nNodes, rho_i)
+        # interfaceFlux!(h_star, y, idx, d_rad, _h, v, _nCells, _nCells * _nNodes, _deltarho, cIn, _strideNode, _strideCell, 1, _nNodes, rho_i)
 
         # Volume Integral
         volumeIntegral!(Dc, y, idx, _nCells, _nNodes, _polyDerM, _MM00, _rMM, _invrMM, S_g, _h, mul1, rho_i, _deltarho, d_rad, _nodes, _weights, v)
 
         # Surface Integral: Apply M_ρ^{-1} * B * (v*c* - rho_i*D*g*)
-        # Option 1: Use combined flux h* (current approach)
+        # Option 1: Use combined flux h*
         # surfaceIntegral!(Dc, 1, _nNodes, h_star, _nCells, _nNodes, _invrMM)
 
-        # Option 2: Use separated convection and dispersion (alternative, currently commented out)
+        # Option 2: Use separated convection and dispersion
         # We would need to compute g* separately for this
         surfaceIntegralConvection!(Dc, c_star, _nCells, _nNodes, _invrMM, v)
         if d_rad != 0.0
@@ -132,8 +132,7 @@ module RadialConvDispOperatorDG
     @inline function surfaceIntegralConvection!(Dc, c_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, v::Float64)
         @inbounds for Cell in 1:_nCells
             @inbounds for Node in 1:_nNodes
-                idx = (Cell-1) * _nNodes + Node
-                Dc[idx] -= (_invrMM[Cell][Node, 1]) * (- v * c_star[Cell]) + (_invrMM[Cell][Node, end]) * (v * c_star[Cell+1])
+                Dc[(Cell-1) * _nNodes + Node] -= (_invrMM[Cell][Node, 1]) * (- v * c_star[Cell]) + (_invrMM[Cell][Node, end]) * (v * c_star[Cell+1])
             end
         end
         return nothing
@@ -143,8 +142,7 @@ module RadialConvDispOperatorDG
     @inline function surfaceIntegralDispersion!(Dc, g_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, rho_i::Vector{Float64}, d_rad::Float64)
         @inbounds for Cell in 1:_nCells
             @inbounds for Node in 1:_nNodes
-                idx = (Cell-1) * _nNodes + Node
-                Dc[idx] -= (_invrMM[Cell][Node, 1]) * (rho_i[Cell] * d_rad * g_star[Cell]) + (_invrMM[Cell][Node, end]) * (-rho_i[Cell+1] * d_rad * g_star[Cell+1])
+                Dc[(Cell-1) * _nNodes + Node] -= (_invrMM[Cell][Node, 1]) * (rho_i[Cell] * d_rad * g_star[Cell]) + (_invrMM[Cell][Node, end]) * (-rho_i[Cell+1] * d_rad * g_star[Cell+1])
             end
         end
         return nothing

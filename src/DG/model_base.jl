@@ -123,7 +123,7 @@ mutable struct RadialConvDispOp
 		Dg = zeros(Float64, nPoints)
 		h = zeros(Float64, nPoints)
 
-		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, weights, invWeights, invMM, MM01, MM00, rMM, invrMM, polyDerM, deltarho, rho_i, S_g, mul1, c_star, g_star, Dc, Dg, h)
+		new(polyDeg, nCells, nNodes, nPoints, strideNode, strideCell, nodes, weights, invWeights, invMM, MM01, MM00, rMM, invrMM, polyDerM, S_g, deltarho, rho_i, mul1, c_star, g_star, Dc, Dg, h)
 	end
 end
 
@@ -218,8 +218,8 @@ mutable struct FilmDiffOp
 	function FilmDiffOp(R_p::Float64, k_f::Union{Float64, Function}, nPoints::Int64, nComp::Int64, polyDeg::Int64, nodes::Vector{Float64}, rho_i::Vector{Float64}, deltarho::Float64; quadrature_type::Symbol=:gauss)
 		# Compute base mass transfer coefficient
 		Q = (3.0 / R_p)
-		M_K = DGElements.filmDiffMMatrix(nodes, polyDeg, rho_i, deltarho, k_f)
-		_, invrMM = DGElements.weightedMMatrix(nodes, polyDeg, rho_i, deltarho)
+		rMM, invrMM = DGElements.weightedMMatrix(nodes, polyDeg, rho_i, deltarho)
+		M_K = DGElements.filmDiffMMatrix(nodes, polyDeg, rho_i, deltarho, k_f, rMM)
 
 		# Allocate buffer
 		temp = zeros(Float64, nPoints * nComp)
@@ -976,17 +976,17 @@ Computes the transport term for the LRM/LRMP/GRM.
 - Stores the change in concentration in `RHS`.
 """
 # Define a function to compute the transport term for the rLRM
-function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switches, idx_units) 
-	# section = i from call 
+function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switches, idx_units)
+	# section = i from call
 	# sink is the unit i.e., h from previous call
-	
+
 	# Determining inlet velocity if specified dynamically
 	get_inlet_flows!(switches, switches.ConnectionInstance.dynamic_flow[switches.switchSetup[section], sink], section, sink, t, m)
 
 	@inbounds for j = 1:m.nComp
 
 		# Indices
-		# For the indicies regarding mobile phase, + idx_units[sink] must be added to get the right column 
+		# For the indicies regarding mobile phase, + idx_units[sink] must be added to get the right column
 		# For the stationary phase, RHS_q is already a slice of the stationary phase of the right column
 		m.idx =  1 + (j-1) * m.ConvDispOpInstance.nPoints : m.ConvDispOpInstance.nPoints + (j-1) * m.ConvDispOpInstance.nPoints
 
@@ -1003,7 +1003,7 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 		# Mobile phase RHS
 		@. @views RHS[m.idx .+ idx_units[sink]] = m.ConvDispOpInstance.Dc - m.Fc * RHS_q[m.idx]
 	end
-	
+
     nothing
 end
 
@@ -1022,16 +1022,15 @@ Lumped Rate Model with Pores (rLRM) struct for a chromatographic radial column.
 - `cpp`, `RHS_q`, `qq`, `RHS`, `solution_outlet`, `solution_times`: State and allocation variables.
 
 # Constructor
-- `LRM(; nComp, colHeight, d_rad, eps_c, c0, cp0, q0, polyDeg, nCells, exact_integration, cross_section_area)`
+- `LRMP(; nComp, colHeight, d_rad, eps_c, c0, cp0, q0, polyDeg, nCells, exact_integration, cross_section_area)`
 """	
 mutable struct rLRMP <: ModelBase
 	# Check parameters
-	# These parameters are the minimum to be specified for the LRM
+	# These parameters are the minimum to be specified for the LRMP
 	nComp::Int64 
     col_Rho_c::Float64
     col_Rho::Float64
 	col_height::Float64
-	cross_section_area::Float64
     d_rad::Union{Float64, Vector{Float64}, Vector{Function}}
     eps_c::Float64
 	eps_p::Float64
@@ -1140,7 +1139,7 @@ Computes the transport term for the LRM/LRMP/GRM.
 - Stores the change in concentration in `RHS`.
 """
 # Define a function to compute the transport term for the rLRM
-function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switches, idx_units) 
+function compute_transport!(RHS, RHS_q, cpp, x, m::rLRMP, t, section, sink, switches, idx_units) 
 	# section = i from call 
 	# sink is the unit i.e., h from previous call
 	
