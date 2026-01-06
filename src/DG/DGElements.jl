@@ -341,27 +341,57 @@ function cgnodes(N)
 end
 
 # hatrho Weighted mass matrix and its inverse
-function weightedMMatrix(_nodes,_polyDeg, rho_i::Vector{Float64}, _deltarho::Float64)
-    # Precompute base mass matrices once
-    M00 = MMatrix(_nodes, _polyDeg, 0, 0)
-    M01 = MMatrix(_nodes, _polyDeg, 0, 1)
-
-    # Compute weighted mass matrix and its inverse for each cell
+function weightedMMatrix(_MM00, _MM01, rho_i::Vector{Float64}, _deltarho::Float64)
     nCells = length(rho_i) - 1
     rMM = Vector{Matrix{Float64}}(undef, nCells)
     invrMM = Vector{Matrix{Float64}}(undef, nCells)
-
     for Cell in 1:nCells
         # M_ρ = ρ_i * M(0,0) + (Δρ/2) * M(0,1)
-        rMM[Cell] = rho_i[Cell] .* M00 .+ (_deltarho/2) .* M01
-        # Precompute inverse
+        rMM[Cell] = rho_i[Cell] .* _MM00 .+ (_deltarho/2) .* _MM01
         invrMM[Cell] = inv(rMM[Cell])
     end
 
     return rMM, invrMM
 end
 
-function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function}, _polyDerM::Matrix{Float64}, rMM::Vector{Matrix{Float64}})
+"""
+    dispMMatrix(_nodes, _polyDeg, rho_i, _deltarho, d_rad, _polyDerM, rMM; overintegrate=false)
+
+Compute the dispersion matrix S_g for radial geometry DG discretization.
+
+# Mathematical Definition
+S_g[j,k] = ∫ (dL_j/dξ) * L_k * ρ̂(ξ) * D_rad(ρ̂(ξ)) dξ
+
+where L_j are Lagrange basis functions, ρ̂ is the radial coordinate, and D_rad is the dispersion coefficient.
+
+# Implementation
+- **Constant d_rad**: Uses analytical formula S_g = d_rad * D^T * M_ρ (exact)
+- **Variable d_rad**: Uses Legendre-Gauss quadrature integration
+
+# Quadrature Accuracy (Kopriva 2009, Boyd)
+- **Linear d_rad(ρ)**: p+1 LG points are exact (overintegrate=false, default)
+- **Nonlinear d_rad(ρ)**: Use overintegrate=true for 3p/2 rule to avoid aliasing
+  - Example: d_rad(ρ) = D₀ * exp(-α*ρ²) requires overintegration
+  - Example: d_rad(ρ) = D₀ * (1 + β*ρ) is linear, no overintegration needed
+
+# Arguments
+- `_nodes`: LGL quadrature nodes in reference element [-1, 1]
+- `_polyDeg`: Polynomial degree p
+- `rho_i`: Cell interface positions [ρ₀, ρ₁, ..., ρₙ]
+- `_deltarho`: Cell width Δρ
+- `d_rad`: Dispersion coefficient (Float64 for constant, Function for variable)
+- `_polyDerM`: Polynomial derivative matrix D
+- `rMM`: Weighted mass matrices M_ρ for each cell
+- `overintegrate`: Use 3p/2 quadrature points for nonlinear coefficients (default: false)
+
+# Returns
+- `S_g`: Vector of dispersion matrices, one per cell
+
+# References
+- Kopriva (2009): "Implementing Spectral Methods for PDEs", Section 5.5
+- Boyd (2001): "Chebyshev and Fourier Spectral Methods", Chapter 3
+"""
+function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function}, _polyDerM::Matrix{Float64}, rMM::Vector{Matrix{Float64}}; overintegrate::Bool = false)
     nCells = length(rho_i) - 1
     nNodes = _polyDeg + 1
     S_g = Vector{Matrix{Float64}}(undef, nCells)
@@ -375,7 +405,9 @@ function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float6
         end
     else
         # Use quadrature integration for spatially varying d_rad
-        quad_nodes, quad_invWeights = lgnodes(_polyDeg)
+        # For nonlinear coefficients, apply Kopriva's 3/2 rule to avoid aliasing
+        quad_deg = overintegrate ? ceil(Int, 3 * _polyDeg / 2) : _polyDeg
+        quad_nodes, quad_invWeights = lgnodes(quad_deg)
         quad_weights = 1.0 ./ quad_invWeights
         nQuad = length(quad_nodes)
 
@@ -425,7 +457,48 @@ function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float6
     return S_g
 end
 
-function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, k_f::Union{Float64, Function}, rMM::Vector{Matrix{Float64}})
+"""
+    filmDiffMMatrix(_nodes, _polyDeg, rho_i, _deltarho, k_f, rMM; overintegrate=false)
+
+Compute the film diffusion matrix M_K for radial geometry LRMP model.
+
+# Mathematical Definition
+M_K[j,k] = ∫ L_j * L_k * ρ̂(ξ) * k_f(ρ̂(ξ)) dξ
+
+where L_j are Lagrange basis functions, ρ̂ is the radial coordinate, and k_f is the film diffusion coefficient.
+
+# Implementation
+- **Constant k_f**: Uses analytical formula M_K = k_f * M_ρ (exact)
+- **Variable k_f**: Uses Legendre-Gauss quadrature integration
+
+# Quadrature Accuracy (Kopriva 2009, Boyd)
+- **Linear k_f(ρ)**: p+1 LG points are exact (overintegrate=false, default)
+- **Nonlinear k_f(ρ)**: Use overintegrate=true for 3p/2 rule to avoid aliasing
+  - Example: k_f(ρ) = k₀ * exp(-β*ρ) requires overintegration
+  - Example: k_f(ρ) = k₀ * (1 + α*ρ) is linear, no overintegration needed
+
+# Arguments
+- `_nodes`: LGL quadrature nodes in reference element [-1, 1]
+- `_polyDeg`: Polynomial degree p
+- `rho_i`: Cell interface positions [ρ₀, ρ₁, ..., ρₙ]
+- `_deltarho`: Cell width Δρ
+- `k_f`: Film diffusion coefficient (Float64 for constant, Function for variable)
+- `rMM`: Weighted mass matrices M_ρ for each cell
+- `overintegrate`: Use 3p/2 quadrature points for nonlinear coefficients (default: false)
+
+# Returns
+- `M_K`: Vector of film diffusion matrices, one per cell
+
+# Physical Context
+This matrix appears in the film diffusion term for the LRMP model:
+    dc/dt = ... - Fc * Q * M_ρ^{-1} * M_K * (c - cp)
+where Q = 3/Rp is the geometric factor for spherical particles.
+
+# References
+- Kopriva (2009): "Implementing Spectral Methods for PDEs", Section 5.5
+- Boyd (2001): "Chebyshev and Fourier Spectral Methods", Chapter 3
+"""
+function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, k_f::Union{Float64, Function}, rMM::Vector{Matrix{Float64}}; overintegrate::Bool = false)
     nCells = length(rho_i) - 1
     nNodes = _polyDeg + 1
     M_K = Vector{Matrix{Float64}}(undef, nCells)
@@ -439,7 +512,9 @@ function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Fl
         end
     else
         # Use quadrature integration for spatially varying k_f
-        quad_nodes, quad_invWeights = lgnodes(_polyDeg)
+        # For nonlinear coefficients, apply Kopriva's 3/2 rule to avoid aliasing
+        quad_deg = overintegrate ? ceil(Int, 3 * _polyDeg / 2) : _polyDeg
+        quad_nodes, quad_invWeights = lgnodes(quad_deg)
         quad_weights = 1.0 ./ quad_invWeights
         nQuad = length(quad_nodes)
 
