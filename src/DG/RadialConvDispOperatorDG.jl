@@ -6,6 +6,7 @@ module RadialConvDispOperatorDG
         fill!(Dg, 0.0)   # reset auxiliary buffer used to build g
         fill!(Dc, 0.0)   # reset residual accumulator for mobile phase
         map = 2.0 / _deltarho
+        v = v / (2 * _deltarho^2)
 
         # Build strong derivative in ξ: Dg ← D * c
         volumeIntegraly!(y, idx, Dg, _nCells, _nNodes, _polyDerM, mul1)
@@ -34,7 +35,7 @@ module RadialConvDispOperatorDG
 
         # Option 2: Use separated convection and dispersion
         # We would need to compute g* separately for this
-        surfaceIntegralConvection!(Dc, c_star, _nCells, _nNodes, _invrMM, v)
+        surfaceIntegralConvection!(Dc, c_star, _nCells, _nNodes, _invrMM, v, _deltarho)
         if d_rad != 0.0
             # Compute g* at faces
             g_star = zeros(_nCells + 1)
@@ -61,22 +62,13 @@ module RadialConvDispOperatorDG
     end
 
     # Volume integral - Convection term: computes M_ρ^{-1} * D^T * M^{(0,0)} * v * c
-    @inline function volumeIntegralConvection!(Dc, y, idx, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _MM00::Matrix{Float64}, _invrMM::Vector{Matrix{Float64}}, v::Float64)
+    @inline function volumeIntegralConvection!(Dc, y, idx, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _MM00::Matrix{Float64}, _invrMM::Vector{Matrix{Float64}}, v::Float64, _deltarho::Float64)
         base = first(idx)
-        temp1 = zeros(_nNodes)
-        temp2 = zeros(_nNodes)
-
         @inbounds for Cell in 1:_nCells
-            idx_range = (Cell - 1) * _nNodes + 1 : Cell * _nNodes
-            # Convection term: D^T * M^{(0,0)} * v * c
-            # temp1 = v * c
-            temp1 .= v .* @view(y[base + idx_range[1] - 1 : base + idx_range[end] - 1])
-            # temp2 = M^{(0,0)} * (v*c)
-            mul!(temp2, _MM00, temp1)
-            # Apply M_ρ^{-1} * (D^T * temp2)
-            broadcast!(+, @view(Dc[idx_range]), @view(Dc[idx_range]), _invrMM[Cell] * (transpose(_polyDerM) * temp2))
+            idx = (Cell - 1) * _nNodes + 1 : Cell * _nNodes
+            broadcast!(+, @view(Dc[idx]), @view(Dc[idx]),
+                       v * (_invrMM[Cell] * (transpose(_polyDerM) * (_MM00 * @view(y[base + idx[1] - 1 : base + idx[end] - 1])))))
         end
-
         return nothing
     end
 
@@ -90,7 +82,7 @@ module RadialConvDispOperatorDG
 
     # Combined volume integral: computes (2/Δρ) * M_ρ^{-1} * [D^T * M^{(0,0)} * v * c - D * S_g * g]
     @inline function volumeIntegral!(Dc, y, idx, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _MM00::Matrix{Float64}, _rMM::Vector{Matrix{Float64}}, _invrMM::Vector{Matrix{Float64}}, S_g::Vector{Matrix{Float64}}, g::Vector{Float64}, mul1::Vector{Float64}, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function}, _nodes::Vector{Float64}, _weights::Vector{Float64}, v::Float64)
-        volumeIntegralConvection!(Dc, y, idx, _nCells, _nNodes, _polyDerM, _MM00, _invrMM, v)
+        volumeIntegralConvection!(Dc, y, idx, _nCells, _nNodes, _polyDerM, _MM00, _invrMM, v, _deltarho)
         if d_rad != 0.0
             volumeIntegralDispersion!(Dc, g, _nCells, _nNodes, _invrMM, S_g)
         end
@@ -129,7 +121,7 @@ module RadialConvDispOperatorDG
 #    end
 
     # Surface integral - Convection term: Dc -= M_ρ^{-1} * B * (v*c*)
-    @inline function surfaceIntegralConvection!(Dc, c_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, v::Float64)
+    @inline function surfaceIntegralConvection!(Dc, c_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, v::Float64, _deltarho::Float64)
         @inbounds for Cell in 1:_nCells
             @inbounds for Node in 1:_nNodes
                 Dc[(Cell-1) * _nNodes + Node] -= (_invrMM[Cell][Node, 1]) * (- v * c_star[Cell]) + (_invrMM[Cell][Node, end]) * (v * c_star[Cell+1])
