@@ -6,7 +6,7 @@ module RadialConvDispOperatorDG
         fill!(Dg, 0.0)   # reset auxiliary buffer used to build g
         fill!(Dc, 0.0)   # reset residual accumulator for mobile phase
         map = 2.0 / _deltarho
-        v = v / (2 * _deltarho^2)
+        v = (2 * _polyDeg + 1) * v / _deltarho
 
         # Build strong derivative in ξ: Dg ← D * c
         volumeIntegraly!(y, idx, Dg, _nCells, _nNodes, _polyDerM, mul1)
@@ -14,14 +14,14 @@ module RadialConvDispOperatorDG
         # Numerical fluxes c*
         interfaceFluxAuxiliary!(c_star, y, idx, _strideNode, _strideCell, _nCells)
 
-        # Apply inlet boundary condition
-        c_star[1] = cIn
-
         # Lift face terms into g
         surfaceIntegraly!(Dg, y, idx, _strideNode, _strideCell, 1, _nNodes, c_star, _nCells, _nNodes, _invMM, _polyDeg)
 
         # g = (2/Δρ) * [ M^{-1} B(c* - c) + D c ]
         @. _h = map * Dg
+
+        # Apply inlet boundary condition
+        c_star[1] = cIn
 
         # Compute complete numerical flux: h* = v*c* - rho_i*D_rad*g*
         # interfaceFlux!(h_star, y, idx, d_rad, _h, v, _nCells, _nCells * _nNodes, _deltarho, cIn, _strideNode, _strideCell, 1, _nNodes, rho_i)
@@ -37,13 +37,12 @@ module RadialConvDispOperatorDG
         # We would need to compute g* separately for this
         surfaceIntegralConvection!(Dc, c_star, _nCells, _nNodes, _invrMM, v, _deltarho)
         if d_rad != 0.0
-            # Compute g* at faces
             g_star = zeros(_nCells + 1)
             for face in 2:_nCells
                 g_star[face] = 0.5 * (_h[(face-1)*_nNodes] + _h[(face-1)*_nNodes + 1])
             end
-            g_star[1] = _h[1]  # Inlet
-            g_star[_nCells+1] = _h[_nCells*_nNodes]  # Outlet
+            g_star[1] = v / d_rad * (y[idx[1]] - cIn)
+            g_star[_nCells+1] = 0.0
             surfaceIntegralDispersion!(Dc, g_star, _nCells, _nNodes, _invrMM, rho_i, d_rad)
         end
 
@@ -72,7 +71,7 @@ module RadialConvDispOperatorDG
         return nothing
     end
 
-    # Volume integral - Dispersion term: computes -M_ρ^{-1} * D * S_g * g
+    # Volume integral - Dispersion term: computes -M_ρ^{-1} * S_g * g
     @inline function volumeIntegralDispersion!(Dc, g::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, S_g::Vector{Matrix{Float64}})
         @inbounds for Cell in 1:_nCells
             broadcast!(-, @view(Dc[(Cell - 1) * _nNodes + 1 : Cell * _nNodes]), @view(Dc[(Cell - 1) * _nNodes + 1 : Cell * _nNodes]), _invrMM[Cell] * (S_g[Cell] * @view(g[(Cell - 1) * _nNodes + 1 : Cell * _nNodes])))
@@ -80,7 +79,7 @@ module RadialConvDispOperatorDG
         return nothing
     end
 
-    # Combined volume integral: computes (2/Δρ) * M_ρ^{-1} * [D^T * M^{(0,0)} * v * c - D * S_g * g]
+    # Combined volume integral: computes (2/Δρ) * M_ρ^{-1} * [D^T * M^{(0,0)} * v * c - S_g * g]
     @inline function volumeIntegral!(Dc, y, idx, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _MM00::Matrix{Float64}, _rMM::Vector{Matrix{Float64}}, _invrMM::Vector{Matrix{Float64}}, S_g::Vector{Matrix{Float64}}, g::Vector{Float64}, mul1::Vector{Float64}, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function}, _nodes::Vector{Float64}, _weights::Vector{Float64}, v::Float64)
         volumeIntegralConvection!(Dc, y, idx, _nCells, _nNodes, _polyDerM, _MM00, _invrMM, v, _deltarho)
         if d_rad != 0.0

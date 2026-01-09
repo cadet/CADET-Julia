@@ -340,18 +340,21 @@ function cgnodes(N)
     return x, 1 ./ w
 end
 
-# hatrho Weighted mass matrix and its inverse
-function weightedMMatrix(_MM00, _MM01, rho_i::Vector{Float64}, _deltarho::Float64)
-    nCells = length(rho_i) - 1
-    rMM = Vector{Matrix{Float64}}(undef, nCells)
-    invrMM = Vector{Matrix{Float64}}(undef, nCells)
-    for Cell in 1:nCells
-        # M_ρ = ρ_i * M(0,0) + (Δρ/2) * M(0,1)
-        rMM[Cell] = rho_i[Cell] .* _MM00 .+ (_deltarho/2) .* _MM01
-        invrMM[Cell] = inv(rMM[Cell])
+# weighted mass matrix and its inverse
+function weightedMMatrix(_nodes::Vector{Float64}, _polyDeg, _nCells, rho_i::Vector{Float64}, _deltarho::Float64)
+    rMM = Vector{Matrix{Float64}}(undef, _nCells)
+    for Cell in 1:_nCells
+        rMM[Cell] = ((_deltarho/2) .* MMatrix(_nodes, _polyDeg, 0 , 1) .+ rho_i[Cell] .* MMatrix(_nodes, _polyDeg, 0 , 0))
     end
+    return rMM
+end
 
-    return rMM, invrMM
+function invweightedMMatrix(_nodes, _polyDeg, _nCells, rho_i, _deltarho)
+    invrMM = Vector{Matrix{Float64}}(undef, _nCells)
+    for Cell in 1:_nCells
+        invrMM[Cell] = inv((_deltarho/2) .* MMatrix(_nodes, _polyDeg, 0, 1) .+ rho_i[Cell] .* MMatrix(_nodes, _polyDeg, 0, 0))
+    end
+    return invrMM
 end
 
 """
@@ -399,7 +402,7 @@ function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float6
     # Check if d_rad is a constant or a function
     if isa(d_rad, Float64)
         # Use analytical formula for constant d_rad: S_g = d_rad * D^T * M_ρ
-        # This computes: S_g[j,k] = ∫ (dL_j/dρ) * ρ * D * L_k dρ = D * D^T * M_ρ
+        # This computes: S_g[j,k] = ∫ (dL_j/dξ) * L_k * ρ(ξ) * d_rad dξ = d_rad * D^T * M_ρ
         for Cell in 1:nCells
             S_g[Cell] = d_rad * transpose(_polyDerM) * rMM[Cell]
         end

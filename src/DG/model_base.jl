@@ -95,7 +95,7 @@ mutable struct RadialConvDispOp
     Dg::Vector{Float64}
     h::Vector{Float64}
 
-	function RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius; node_type="cgl")
+	function RadialConvDispOp(polyDeg, nCells, col_inner_radius, col_outer_radius)
 
 		nNodes = polyDeg + 1
 		nPoints = nNodes * nCells	#Number of cells times number of nodes per component
@@ -106,17 +106,11 @@ mutable struct RadialConvDispOp
 		deltarho = (col_outer_radius - col_inner_radius) / nCells
 		rho_i  = [col_inner_radius + (cell - 1 ) * deltarho for cell in 1:(nCells + 1)] # face radii
 
-		# Select node type: CGL (Chebyshev) or LGL (Legendre)
-		if node_type == "lgl"
-			nodes, invWeights = DGElements.lglnodes(polyDeg) #LGL nodes & weights
-		else
-			nodes, invWeights = DGElements.cglnodes(polyDeg) #CGL nodes & weights (default)
-		end
 		weights = 1.0 ./ invWeights  # Actual weights for quadrature
 		invMM = DGElements.invMMatrix(nodes, polyDeg) #Inverse mass matrix
-		MM01 = DGElements.MMatrix(nodes, polyDeg, 0 , 1) # Mass matrix 0,1
+		MM01 = DGElements.MMatrix(nodes, polyDeg, 0, 1) # Mass matrix 0,1
 		MM00 = DGElements.MMatrix(nodes, polyDeg, 0, 0) # Mass matrix 0,0
-		rMM, invrMM = DGElements.weightedMMatrix(MM00, MM01, rho_i, deltarho) # weighted mass matrix and its inverse
+		rMM, invrMM = DGElements.weightedMMatrix(nodes, polyDeg, nCells, rho_i, deltarho) # weighted mass matrix and its inverse
 		polyDerM = DGElements.derivativeMatrix(polyDeg, nodes) #derivative matrix
 		S_g = Vector{Matrix{Float64}}(undef, nCells)
 
@@ -910,10 +904,10 @@ mutable struct rLRM <: ModelBase
 	
 
 	# Default variables go in the arguments in the LRM
-	function rLRM(; nComp, col_Rho_c, col_Rho, d_rad, eps_c, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, col_height=1.0, node_type="cgl")
+	function rLRM(; nComp, col_Rho_c, col_Rho, d_rad, eps_c, c0 = 0.0, cp0 = -1, q0 = 0, polyDeg=4, nCells=8, col_height=1.0)
 
 		# Get necessary variables for convection dispersion DG
-		ConvDispOpInstance = RadialConvDispOp(polyDeg, nCells, col_Rho_c, col_Rho, node_type=node_type)
+		ConvDispOpInstance = RadialConvDispOp(polyDeg, nCells, col_Rho_c, col_Rho)
 
 		# The bind stride is the stride between each component for binding. For LRM, it is nPoints=(polyDeg + 1) * nCells
 		bindStride = ConvDispOpInstance.nPoints
