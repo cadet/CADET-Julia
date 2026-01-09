@@ -20,6 +20,8 @@ include("DG/DGElements.jl")
 using .DGElements
 include("DG/ConvDispOperatorDG.jl")
 using .ConvDispOperatorDG
+include("DG/RadialConvDispOperatorDG.jl")
+using .RadialConvDispOperatorDG
 
 # Include the Julia functions
 include("isotherms/binding_base.jl")
