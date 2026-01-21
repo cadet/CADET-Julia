@@ -233,6 +233,96 @@ function MMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return inv(invMMatrix(_nodes,_polyDeg, alpha, beta))
 end
 
+"""
+    getVandermonde_LAGRANGE(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Computes the Vandermonde matrix of Lagrange basis polynomials at Legendre-Gauss quadrature points,
+weighted by the square root of the Jacobi weight function for mass matrix computation.
+
+V[q,k] = √(wₖ · (1-ξₖ)^α · (1+ξₖ)^β) · Lₖ(ξ_q)
+
+where Lₖ(ξ) = Π_{m≠k} (ξ - ξₘ) / (ξₖ - ξₘ) are the Lagrange basis polynomials.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes (e.g., LGL nodes).
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Jacobi weight function parameters (default 0.0 for standard mass matrix).
+
+# Returns
+The weighted Vandermonde matrix as a 2D array of size (nQuad, nNodes).
+"""
+function getVandermonde_LAGRANGE(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+    nNodes = _polyDeg + 1
+
+    # Use LG quadrature - need extra points for weight function
+    quad_deg = _polyDeg + ceil(Int, (alpha + beta) / 2)
+    quad_nodes, quad_invWeights = lgnodes(quad_deg)
+    quad_weights = 1.0 ./ quad_invWeights
+    nQuad = length(quad_nodes)
+
+    V = zeros(Float64, nQuad, nNodes)
+    for k in 1:nNodes
+        for q in 1:nQuad
+            # Lagrange basis polynomial L_k(ξ_q)
+            L_k = 1.0
+            for m in 1:nNodes
+                if m != k
+                    L_k *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                end
+            end
+            # Weight factor: √(w_q · (1-ξ_q)^α · (1+ξ_q)^β)
+            weight_factor = sqrt(quad_weights[q] * ((1.0 - quad_nodes[q])^alpha) * ((1.0 + quad_nodes[q])^beta))
+            V[q, k] = weight_factor * L_k
+        end
+    end
+
+    return V
+end
+
+"""
+    LagrangeMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Computes the mass matrix using Lagrange polynomial integration with Jacobi weight.
+
+M[i,j] = ∫₋₁¹ Lᵢ(ξ) · Lⱼ(ξ) · (1-ξ)^α · (1+ξ)^β dξ
+
+where Lᵢ(ξ) are the Lagrange basis polynomials defined on `_nodes`.
+
+Uses quadrature: M = Vᵀ · V where V is the weighted Lagrange Vandermonde matrix.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes (e.g., LGL nodes).
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Weight function parameters (default 0.0 for standard mass matrix).
+
+# Returns
+The mass matrix as a 2D array.
+"""
+function LagrangeMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+    return transpose(getVandermonde_LAGRANGE(_nodes, _polyDeg, alpha, beta)) * getVandermonde_LAGRANGE(_nodes, _polyDeg, alpha, beta)
+end
+
+"""
+    invLagrangeMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Computes the inverse mass matrix using Lagrange polynomials with Jacobi weight.
+
+M⁻¹ = (Vᵀ · V)⁻¹
+
+where V is the weighted Lagrange Vandermonde matrix from getVandermonde_LAGRANGE.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes.
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Jacobi weight function parameters (optional).
+
+# Returns
+The inverse mass matrix as a 2D array.
+"""
+function invLagrangeMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+    return inv(LagrangeMMatrix(_nodes, _polyDeg, alpha, beta))
+end
+
 # #Stiffness matrix
 # function steifMatrix(_nodes,_polyDeg)
 #     #Mass matrix * Derivative matrix
@@ -344,7 +434,7 @@ end
 function weightedMMatrix(_nodes::Vector{Float64}, _polyDeg, _nCells, rho_i::Vector{Float64}, _deltarho::Float64)
     rMM = Vector{Matrix{Float64}}(undef, _nCells)
     for Cell in 1:_nCells
-        rMM[Cell] = ((_deltarho/2) .* MMatrix(_nodes, _polyDeg, 0 , 1) .+ rho_i[Cell] .* MMatrix(_nodes, _polyDeg, 0 , 0))
+        rMM[Cell] = ((_deltarho/2) .* LagrangeMMatrix(_nodes, _polyDeg, 0 , 1) .+ rho_i[Cell] .* LagrangeMMatrix(_nodes, _polyDeg, 0 , 0))
     end
     return rMM
 end
@@ -352,7 +442,7 @@ end
 function invweightedMMatrix(_nodes, _polyDeg, _nCells, rho_i, _deltarho)
     invrMM = Vector{Matrix{Float64}}(undef, _nCells)
     for Cell in 1:_nCells
-        invrMM[Cell] = inv((_deltarho/2) .* MMatrix(_nodes, _polyDeg, 0, 1) .+ rho_i[Cell] .* MMatrix(_nodes, _polyDeg, 0, 0))
+        invrMM[Cell] = inv((_deltarho/2) .* LagrangeMMatrix(_nodes, _polyDeg, 0, 1) .+ rho_i[Cell] .* LagrangeMMatrix(_nodes, _polyDeg, 0, 0))
     end
     return invrMM
 end
@@ -386,29 +476,17 @@ where L_j are Lagrange basis functions, ρ̂ is the radial coordinate, and D_rad
 - `_polyDerM`: Polynomial derivative matrix D
 - `rMM`: Weighted mass matrices M_ρ for each cell
 - `overintegrate`: Use 3p/2 quadrature points for nonlinear coefficients (default: false)
-
-# Returns
-- `S_g`: Vector of dispersion matrices, one per cell
-
-# References
-- Kopriva (2009): "Implementing Spectral Methods for PDEs", Section 5.5
-- Boyd (2001): "Chebyshev and Fourier Spectral Methods", Chapter 3
 """
 function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function}, _polyDerM::Matrix{Float64}, rMM::Vector{Matrix{Float64}}; overintegrate::Bool = false)
     nCells = length(rho_i) - 1
     nNodes = _polyDeg + 1
     S_g = Vector{Matrix{Float64}}(undef, nCells)
 
-    # Check if d_rad is a constant or a function
     if isa(d_rad, Float64)
-        # Use analytical formula for constant d_rad: S_g = d_rad * D^T * M_ρ
-        # This computes: S_g[j,k] = ∫ (dL_j/dξ) * L_k * ρ(ξ) * d_rad dξ = d_rad * D^T * M_ρ
         for Cell in 1:nCells
             S_g[Cell] = d_rad * transpose(_polyDerM) * rMM[Cell]
         end
     else
-        # Use quadrature integration for spatially varying d_rad
-        # For nonlinear coefficients, apply Kopriva's 3/2 rule to avoid aliasing
         quad_deg = overintegrate ? ceil(Int, 3 * _polyDeg / 2) : _polyDeg
         quad_nodes, quad_invWeights = lgnodes(quad_deg)
         quad_weights = 1.0 ./ quad_invWeights
@@ -447,7 +525,7 @@ function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float6
 
         for Cell in 1:nCells
                 S_g[Cell] = zeros(Float64, nNodes, nNodes)
-                jacobian = _deltarho / 2  # dρ/dξ
+                jacobian = _deltarho / 2
 
                 for q in 1:nQuad
                     rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
