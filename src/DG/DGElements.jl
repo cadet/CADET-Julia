@@ -525,10 +525,8 @@ function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float6
 
         for Cell in 1:nCells
                 S_g[Cell] = zeros(Float64, nNodes, nNodes)
-                jacobian = _deltarho / 2
-
                 for q in 1:nQuad
-                    rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
+                    rho_q = rho_i[Cell] + (_deltarho / 2) * (1 + quad_nodes[q])
                     d_rad_q = d_rad(rho_q)
                     weight_factor = quad_weights[q] * rho_q * d_rad_q
                     S_g[Cell] .+= weight_factor .* (dlagrange_at_quad[:, q] * lagrange_at_quad[:, q]')
@@ -565,35 +563,18 @@ where L_j are Lagrange basis functions, ρ̂ is the radial coordinate, and k_f i
 - `_deltarho`: Cell width Δρ
 - `k_f`: Film diffusion coefficient (Float64 for constant, Function for variable)
 - `rMM`: Weighted mass matrices M_ρ for each cell
-- `overintegrate`: Use 3p/2 quadrature points for nonlinear coefficients (default: false)
-
-# Returns
-- `M_K`: Vector of film diffusion matrices, one per cell
-
-# Physical Context
-This matrix appears in the film diffusion term for the LRMP model:
-    dc/dt = ... - Fc * Q * M_ρ^{-1} * M_K * (c - cp)
-where Q = 3/Rp is the geometric factor for spherical particles.
-
-# References
-- Kopriva (2009): "Implementing Spectral Methods for PDEs", Section 5.5
-- Boyd (2001): "Chebyshev and Fourier Spectral Methods", Chapter 3
+- `overintegrate`: Use 3p/2 quadrature points for nonlinear coefficients
 """
 function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, k_f::Union{Float64, Function}, rMM::Vector{Matrix{Float64}}; overintegrate::Bool = false)
     nCells = length(rho_i) - 1
     nNodes = _polyDeg + 1
     M_K = Vector{Matrix{Float64}}(undef, nCells)
 
-    # Check if k_f is a constant or a function
     if isa(k_f, Float64)
-        # Use analytical formula for constant k_f: M_K = k_f * M_ρ
-        # This computes: M_K[j,k] = ∫ L_j * ρ * k_f * L_k dρ = k_f * M_ρ
         for Cell in 1:nCells
             M_K[Cell] = k_f * rMM[Cell]
         end
     else
-        # Use quadrature integration for spatially varying k_f
-        # For nonlinear coefficients, apply Kopriva's 3/2 rule to avoid aliasing
         quad_deg = overintegrate ? ceil(Int, 3 * _polyDeg / 2) : _polyDeg
         quad_nodes, quad_invWeights = lgnodes(quad_deg)
         quad_weights = 1.0 ./ quad_invWeights
@@ -613,10 +594,8 @@ function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Fl
 
         for Cell in 1:nCells
             M_K[Cell] = zeros(Float64, nNodes, nNodes)
-            jacobian = _deltarho / 2  # dρ/dξ
-
             for q in 1:nQuad
-                rho_q = rho_i[Cell] + jacobian * (1 + quad_nodes[q])
+                rho_q = rho_i[Cell] + (_deltarho / 2) * (1 + quad_nodes[q])
                 k_f_q = k_f(rho_q)
                 weight_factor = quad_weights[q] * rho_q * k_f_q
                 M_K[Cell] .+= weight_factor .* (lagrange_at_quad[:, q] * lagrange_at_quad[:, q]')

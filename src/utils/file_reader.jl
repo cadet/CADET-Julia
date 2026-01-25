@@ -1,4 +1,44 @@
 """
+    parse_variable_coefficient(coeff, ref_radius::Float64)
+
+Parse a coefficient that may be constant or variable (position-dependent).
+
+# Arguments
+- `coeff`: Either a scalar/array (constant) or an OrderedDict with "type" key (variable).
+- `ref_radius::Float64`: Reference radius for variable coefficients (typically inner radius).
+
+# Supported variable types
+- `"linear"`: `coeff(ρ) = base + slope * (ρ - ref)` where ref defaults to ref_radius.
+
+# Example dictionary format
+```julia
+OrderedDict("type" => "linear", "base" => 1e-4, "slope" => 5e-5)
+OrderedDict("type" => "linear", "base" => 1e-4, "slope" => 5e-5, "ref" => 0.1)
+```
+
+# Returns
+- For constant: the scalar/array value
+- For variable: a Function that takes ρ and returns the coefficient value
+"""
+function parse_variable_coefficient(coeff, ref_radius::Float64)
+	if isa(coeff, OrderedDict) || isa(coeff, Dict)
+		if haskey(coeff, "type")
+			coeff_type = coeff["type"]
+			if coeff_type == "linear"
+				base = coeff["base"]
+				slope = coeff["slope"]
+				ref = haskey(coeff, "ref") ? coeff["ref"] : ref_radius
+				return rho -> base + slope * (rho - ref)
+			else
+				error("Unknown variable coefficient type: $coeff_type. Supported: linear")
+			end
+		end
+	end
+	# Return as-is for constant values
+	return coeff
+end
+
+"""
 create_units(model::Union{Dict, OrderedDict})
 
 Constructs and initializes the simulation units (inlets, outlets, columns) from a CADET model dictionary.
@@ -124,16 +164,18 @@ function create_units(model::Union{Dict, OrderedDict})
                 units[unit_name] = column_instance
 
             elseif unit_type == "RADIAL_LUMPED_RATE_MODEL_WITHOUT_PORES"
-                # Create column instance
-                # Replace the following line with your column instantiation logic
-                column_instance = rLRM(nComp = value["ncomp"], 
-				    				col_inner_radius = value["col_inner_radius"]/1.0, 
-                                    col_outer_radius = value["col_outer_radius"]/1.0, 
-					    			d_rad = value["col_dispersion"]./1.0, 
-				    	    		eps_c = value["col_porosity"]/1.0, 
-							    	c0 = value["init_c"], 
+                # Parse variable coefficients (supports constant or position-dependent)
+				col_inner_radius = value["col_inner_radius"]/1.0
+				d_rad_parsed = parse_variable_coefficient(value["col_dispersion"], col_inner_radius)
+
+				# Create column instance
+                column_instance = rLRM(nComp = value["ncomp"],
+				    				col_Rho_c = col_inner_radius,
+                                    col_Rho = value["col_outer_radius"]/1.0,
+					    			d_rad = d_rad_parsed,
+				    	    		eps_c = value["col_porosity"]/1.0,
+							    	c0 = value["init_c"],
 							    	q0 = value["init_q"],
-								    # save_output = true, # defaults to true
 								    polyDeg = value["discretization"]["polyDeg"], # defaults to 4
 							    	nCells = value["discretization"]["ncol"], # defaults to 8
                                     col_height = value["col_height"]./1.0
@@ -169,17 +211,24 @@ function create_units(model::Union{Dict, OrderedDict})
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
 
-            elseif unit_type == "RADIAL_LUMPED_RATE_MODEL_WITHOUT_PORES"
-                # Create column instance
-                # Replace the following line with your column instantiation logic
-                column_instance = rLRMP(nComp = value["ncomp"], 
-				    				col_inner_radius = value["col_inner_radius"]/1.0, 
-                                    col_outer_radius = value["col_outer_radius"]/1.0, 
-					    			d_rad = value["col_dispersion"]./1.0, 
-				    	    		eps_c = value["col_porosity"]/1.0, 
-							    	c0 = value["init_c"], 
+            elseif unit_type == "RADIAL_LUMPED_RATE_MODEL_WITH_PORES"
+                # Parse variable coefficients (supports constant or position-dependent)
+				col_inner_radius = value["col_inner_radius"]/1.0
+				d_rad_parsed = parse_variable_coefficient(value["col_dispersion"], col_inner_radius)
+				kf_parsed = parse_variable_coefficient(value["film_diffusion"], col_inner_radius)
+
+				# Create column instance for radial LRMP
+                column_instance = rLRMP(nComp = value["ncomp"],
+				    				col_Rho_c = col_inner_radius,
+                                    col_Rho = value["col_outer_radius"]/1.0,
+					    			d_rad = d_rad_parsed,
+				    	    		eps_c = value["col_porosity"]/1.0,
+									eps_p = value["par_porosity"]/1.0,
+									kf = kf_parsed,
+									Rp = value["par_radius"]/1.0,
+							    	c0 = value["init_c"],
+									cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
 							    	q0 = value["init_q"],
-								    # save_output = true, # defaults to true
 								    polyDeg = value["discretization"]["polyDeg"], # defaults to 4
 							    	nCells = value["discretization"]["ncol"], # defaults to 8
                                     col_height = value["col_height"]./1.0
