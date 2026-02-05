@@ -1,19 +1,11 @@
 module RadialConvDispOperatorDG
     using LinearAlgebra
 
-    # d_rad_i: Vector of dispersion coefficients at each cell interface (length nCells+1)
-    #          For constant D, pass fill(D, nCells+1) or use the scalar version
     @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _polyDerM, _invMM, _MM01, _MM00, _rMM, _invrMM, S_g, _nodes, _weights, v, d_rad_i, rho_i, cIn, c_star, g_star, Dg, g, mul1, mul2)
         fill!(Dg, 0.0)   # reset auxiliary buffer used to build g
         fill!(Dc, 0.0)   # reset residual accumulator for mobile phase
-        map = 2.0 / _deltarho
-        #v /= rho_i[1] / 4.0
-        #v /= rho_i[1] / 3.0
-        #v /= rho_i[1] / 2.0
-        #v /= rho_i[1]
-        #v *= map
-        #v *= map / rho_i[1]
-        v *= (rho_i[1] + rho_i[end]) / 2.0
+        #v *= (rho_i[1] + rho_i[end]) / 2.0
+        #v *= rho_i[1]
 
         # Strong derivative in ξ: Dg ← D * c
         auxiliaryVolumeIntegral!(y, idx, _strideNode, _strideCell, Dg, _nCells, _nNodes, _polyDerM, mul1)
@@ -25,9 +17,9 @@ module RadialConvDispOperatorDG
         auxiliarySurfaceIntegral!(Dg, y, idx, _strideNode, _strideCell, 1, _nNodes, c_star, _nCells, _nNodes, _invMM, _polyDeg)
 
         # g = (2/Δρ) * Dg
-        @. g = map * Dg
+        @. g = (2.0 / _deltarho) * Dg
 
-        computeNumericalFluxes!(c_star, g_star, y, idx, g, _strideNode, _strideCell, _nNodes, _nCells, v, d_rad_i, cIn)
+        computeNumericalFluxes!(c_star, g_star, y, idx, g, _strideNode, _strideCell, _nNodes, _nCells, v, d_rad_i, rho_i, cIn)
 
         # Dc -= (2/Δρ) * M_ρ^{-1} * (B * v * c* - B_g * g*)
         surfaceIntegral!(Dc, c_star, g_star, _nCells, _nNodes, _invrMM, v, d_rad_i, rho_i, _deltarho)
@@ -84,7 +76,6 @@ module RadialConvDispOperatorDG
         return nothing
     end
 
-    # d_rad_i: Vector of dispersion coefficients at each interface (length nCells+1)
     @inline function surfaceIntegral!(Dc, c_star::Vector{Float64}, g_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, v::Float64, d_rad_i::Vector{Float64}, rho_i::Vector{Float64}, _deltarho::Float64)
         for Cell in 1:_nCells
             @inbounds @simd for Node in 1:_nNodes
@@ -95,14 +86,13 @@ module RadialConvDispOperatorDG
     end
 
     # Compute numerical fluxes c* and g*
-    # d_rad_i: Vector of dispersion coefficients at each interface (length nCells+1)
-    @inline function computeNumericalFluxes!(c_star, g_star, y, idx, g, _strideNode, _strideCell, _nNodes, _nCells, v, d_rad_i::Vector{Float64}, cIn)
+    @inline function computeNumericalFluxes!(c_star, g_star, y, idx, g, _strideNode, _strideCell, _nNodes, _nCells, v, d_rad_i::Vector{Float64}, rho_i::Vector{Float64}, cIn)
         @inbounds for Cell in 2:_nCells
             c_star[Cell] = y[idx[1] + (Cell - 1) * _strideCell + ifelse(v >= 0.0, -_strideNode, 0)]
             g_star[Cell] = 0.5 * (g[(Cell - 1) * _nNodes] + g[(Cell - 1) * _nNodes + 1])
         end
         c_star[1] = cIn
-        g_star[1] = v / d_rad_i[1] * (y[idx[1]] - cIn)
+        g_star[1] = v / (d_rad_i[1]) * (y[idx[1]] - cIn)
 
         c_star[_nCells + 1] = y[idx[1] + _nCells * _strideCell - _strideNode]
         g_star[_nCells + 1] = 0.0

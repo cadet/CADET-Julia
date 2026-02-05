@@ -250,6 +250,46 @@ mutable struct FilmDiffOp
 end
 
 """
+    parse_variable_coefficient(coeff, ref_radius::Float64)
+
+Parse a coefficient that may be constant or variable (position-dependent).
+
+# Arguments
+- `coeff`: Either a scalar/array (constant) or an OrderedDict with "type" key (variable).
+- `ref_radius::Float64`: Reference radius for variable coefficients (typically inner radius).
+
+# Supported variable types
+- `"linear"`: `coeff(ρ) = base + slope * (ρ - ref)` where ref defaults to ref_radius.
+
+# Example dictionary format
+```julia
+OrderedDict("type" => "linear", "base" => 1e-4, "slope" => 5e-5)
+OrderedDict("type" => "linear", "base" => 1e-4, "slope" => 5e-5, "ref" => 0.1)
+```
+
+# Returns
+- For constant: the scalar/array value
+- For variable: a Function that takes ρ and returns the coefficient value
+"""
+function parse_variable_coefficient(coeff, ref_radius::Float64)
+	if isa(coeff, OrderedDict) || isa(coeff, Dict)
+		if haskey(coeff, "type")
+			coeff_type = coeff["type"]
+			if coeff_type == "linear"
+				base = coeff["base"]
+				slope = coeff["slope"]
+				ref = haskey(coeff, "ref") ? coeff["ref"] : ref_radius
+				return rho -> base + slope * (rho - ref)
+			else
+				error("Unknown variable coefficient type: $coeff_type. Supported: linear")
+			end
+		end
+	end
+	# Return as-is for constant values
+	return coeff
+end
+
+"""
     InletConditions
 
 Abstract type for specifying inlet condition types (static or dynamic) for a unit.
@@ -1019,8 +1059,6 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRM, t, section, sink, switc
 		# inlet conc for comp j
 		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j])
 
-		# S_g and d_rad_i are precomputed in constructor (assumes same d_rad for all components)
-
 		# Convection Dispersion term
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp]
 		RadialConvDispOperatorDG.radialresidualImpl!(m.ConvDispOpInstance.Dc, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nNodes, m.ConvDispOpInstance.nCells, m.ConvDispOpInstance.deltarho, m.polyDeg, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.ConvDispOpInstance.MM01, m.ConvDispOpInstance.MM00, m.ConvDispOpInstance.rMM, m.ConvDispOpInstance.invrMM, m.ConvDispOpInstance.S_g, m.ConvDispOpInstance.nodes, m.ConvDispOpInstance.weights, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.ConvDispOpInstance.d_rad_i, m.ConvDispOpInstance.rho_i, m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.g_star, m.ConvDispOpInstance.Dg, m.ConvDispOpInstance.g, m.ConvDispOpInstance.mul1, m.ConvDispOpInstance.mul2)
@@ -1056,6 +1094,7 @@ mutable struct rLRMP <: ModelBase
     col_Rho_c::Float64
     col_Rho::Float64
 	col_height::Float64
+	cross_section_area::Float64
     d_rad::Union{Float64, Vector{Float64}, Vector{Function}}
     eps_c::Float64
 	eps_p::Float64
@@ -1074,7 +1113,6 @@ mutable struct rLRMP <: ModelBase
 	ConvDispOpInstance::RadialConvDispOp
 	FilmDiffOpInstance::FilmDiffOp
 
-	# based on the input, remaining properties are calculated in the function LRMP
 	#Determined properties
 	bindStride::Int64
 	adsStride::Int64
@@ -1121,6 +1159,7 @@ mutable struct rLRMP <: ModelBase
 		# allocation vectors and matrices
 		idx = 1:ConvDispOpInstance.nPoints
 		idx_p = 1:ConvDispOpInstance.nPoints
+		cross_section_area = 2 * π * col_height
 		Fc = (1-eps_c)/eps_c
 		Fp = (1-eps_p)/eps_p
 		Fjac = Fp  # The phase ratio used for Jacobian i.e., dcdc = Fjac * dqdc
@@ -1138,8 +1177,6 @@ mutable struct rLRMP <: ModelBase
 		end
 
 		# Initialize FilmDiffOp for radial geometry
-		# Note: For now, we'll create this with a scalar kf (or first component)
-		# Individual components will recompute their M_K matrices in compute_transport!
 		kf_init = isa(kf, Vector) ? kf[1] : kf
 		FilmDiffOpInstance = FilmDiffOp(Rp, kf_init, ConvDispOpInstance.nPoints, nComp, polyDeg, ConvDispOpInstance.nodes, ConvDispOpInstance.rho_i, ConvDispOpInstance.deltarho)
 
@@ -1161,7 +1198,7 @@ mutable struct rLRMP <: ModelBase
 					)
 
 		# The new commando must match the order of the elements in the struct!
-		new(nComp, col_Rho_c, col_Rho, col_height, d_rad, eps_c, eps_p, kf, Rp, c0, cp0, q0, cIn, polyDeg, nCells, ConvDispOpInstance, FilmDiffOpInstance, bindStride, adsStride, unitStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
+		new(nComp, col_Rho_c, col_Rho, col_height, cross_section_area, d_rad, eps_c, eps_p, kf, Rp, c0, cp0, q0, cIn, polyDeg, nCells, ConvDispOpInstance, FilmDiffOpInstance, bindStride, adsStride, unitStride, idx, idx_p, Fc, Fp, Fjac, cpp, RHS_q, qq, RHS, solution_outlet, solution_times, bind)
 	end
 end
 
@@ -1205,25 +1242,13 @@ function compute_transport!(RHS, RHS_q, cpp, x, m::rLRMP, t, section, sink, swit
 		# inlet conc for comp j
 		inlet_concentrations!(m.cIn, switches, j, section, sink, x, t, switches.inlet_conditions[section, sink, j])
 
-		# S_g and d_rad_i are precomputed in constructor (assumes same d_rad for all components)
-		# M_K is precomputed in FilmDiffOp constructor (assumes same kf for all components)
-
 		# Convection Dispersion term
 		cpp = @view x[1 + idx_units[sink] : idx_units[sink] + m.ConvDispOpInstance.nPoints * m.nComp]
 		RadialConvDispOperatorDG.radialresidualImpl!(m.ConvDispOpInstance.Dc, cpp, m.idx, m.ConvDispOpInstance.strideNode, m.ConvDispOpInstance.strideCell, m.ConvDispOpInstance.nNodes, m.ConvDispOpInstance.nCells, m.ConvDispOpInstance.deltarho, m.polyDeg, m.ConvDispOpInstance.polyDerM, m.ConvDispOpInstance.invMM, m.ConvDispOpInstance.MM01, m.ConvDispOpInstance.MM00, m.ConvDispOpInstance.rMM, m.ConvDispOpInstance.invrMM, m.ConvDispOpInstance.S_g, m.ConvDispOpInstance.nodes, m.ConvDispOpInstance.weights, switches.ConnectionInstance.u_tot[switches.switchSetup[section], sink], m.ConvDispOpInstance.d_rad_i, m.ConvDispOpInstance.rho_i, m.cIn[j], m.ConvDispOpInstance.c_star, m.ConvDispOpInstance.g_star, m.ConvDispOpInstance.Dg, m.ConvDispOpInstance.g, m.ConvDispOpInstance.mul1, m.ConvDispOpInstance.mul2)
 
-		# Film diffusion term with radial geometry weighting
-		# Compute M_ρ^{-1} * M_K * (c - cp) for each cell
-		fill!(m.FilmDiffOpInstance.temp, 0.0)
-		for cell in 1:m.ConvDispOpInstance.nCells
-			cell_idx = (cell-1)*m.ConvDispOpInstance.nNodes + 1 : cell*m.ConvDispOpInstance.nNodes
-			c_cell = @view x[m.idx[cell_idx] .+ idx_units[sink]]
-			cp_cell = @view x[m.idx_p[cell_idx] .+ idx_units[sink]]
-			# temp = M_K * (c - cp)
-			temp_diff = c_cell .- cp_cell
-			temp_MK = m.FilmDiffOpInstance.M_K[cell] * temp_diff
-			# Apply M_ρ^{-1} and geometric factor
-			m.FilmDiffOpInstance.temp[cell_idx] .= m.FilmDiffOpInstance.Q .* (m.ConvDispOpInstance.invrMM[cell] * temp_MK)
+		# Film diffusion: M_ρ^{-1} * M_K * (c - cp) for each cell
+		@inbounds for cell in 1:m.ConvDispOpInstance.nCells
+			@views m.FilmDiffOpInstance.temp[(cell-1)*m.ConvDispOpInstance.nNodes+1 : cell*m.ConvDispOpInstance.nNodes] .= m.FilmDiffOpInstance.Q .* (m.ConvDispOpInstance.invrMM[cell] * (m.FilmDiffOpInstance.M_K[cell] * (x[m.idx[(cell-1)*m.ConvDispOpInstance.nNodes+1 : cell*m.ConvDispOpInstance.nNodes] .+ idx_units[sink]] .- x[m.idx_p[(cell-1)*m.ConvDispOpInstance.nNodes+1 : cell*m.ConvDispOpInstance.nNodes] .+ idx_units[sink]])))
 		end
 
 		# Mobile phase: dc/dt = Dc - Fc * filmDiff
