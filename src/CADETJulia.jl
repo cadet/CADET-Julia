@@ -37,7 +37,8 @@ include("utils/solver.jl")
 include("utils/solverDAE.jl")
 include("isotherms/Jacobians.jl")
 include("DG/conv_disp_operator_dg_jac.jl")
+include("DG/radial_conv_disp_operator_dg_jac.jl")
 
-export OrderedDict, solve_model, solve_model_dae, create_units
+export OrderedDict, solve_model, solve_model_dae, create_units, ConvDispJacobian
 
 end
