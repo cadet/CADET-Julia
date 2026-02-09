@@ -105,7 +105,7 @@ mutable struct RadialConvDispOp
 		strideNode = 1				#Number of points to next concentration in the state vector, here 1
 		strideCell = nNodes * strideNode
 
-		nodes, invWeights = DGElements.lglnodes(polyDeg)
+		nodes, invWeights = DGElements.cglnodes(polyDeg)
 		weights = 1 ./ invWeights  # Compute weights from invWeights
 		deltarho = (col_outer_radius - col_inner_radius) / nCells
 		rho_i  = [col_inner_radius + (cell - 1 ) * deltarho for cell in 1:(nCells + 1)] # face radii

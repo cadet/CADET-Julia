@@ -4,8 +4,8 @@ module RadialConvDispOperatorDG
     @inline function radialresidualImpl!(Dc, y, idx, _strideNode, _strideCell, _nNodes, _nCells, _deltarho, _polyDeg, _polyDerM, _invMM, _MM01, _MM00, _rMM, _invrMM, S_g, _nodes, _weights, v, d_rad_i, rho_i, cIn, c_star, g_star, Dg, g, mul1, mul2)
         fill!(Dg, 0.0)   # reset auxiliary buffer used to build g
         fill!(Dc, 0.0)   # reset residual accumulator for mobile phase
-        #v *= (rho_i[1] + rho_i[end]) / 2.0
-        #v *= rho_i[1]
+
+        u = v >= 0.0 ? v * rho_i[1] : v * rho_i[end]
 
         # Strong derivative in ξ: Dg ← D * c
         auxiliaryVolumeIntegral!(y, idx, _strideNode, _strideCell, Dg, _nCells, _nNodes, _polyDerM, mul1)
@@ -19,13 +19,13 @@ module RadialConvDispOperatorDG
         # g = (2/Δρ) * Dg
         @. g = (2.0 / _deltarho) * Dg
 
-        computeNumericalFluxes!(c_star, g_star, y, idx, g, _strideNode, _strideCell, _nNodes, _nCells, v, d_rad_i, rho_i, cIn)
+        computeNumericalFluxes!(c_star, g_star, y, idx, g, _strideNode, _strideCell, _nNodes, _nCells, u, d_rad_i, rho_i, cIn)
 
-        # Dc -= (2/Δρ) * M_ρ^{-1} * (B * v * c* - B_g * g*)
-        surfaceIntegral!(Dc, c_star, g_star, _nCells, _nNodes, _invrMM, v, d_rad_i, rho_i, _deltarho)
+        # Dc -= (2/Δρ) * M_ρ^{-1} * (B * u * c* - B_g * g*)
+        surfaceIntegral!(Dc, c_star, g_star, _nCells, _nNodes, _invrMM, u, d_rad_i, rho_i, _deltarho)
 
-        # Dc += (2/Δρ) * M_ρ^{-1} * (D^T * M^{(0,0)} * v * c - S_g * g)
-        volumeIntegral!(Dc, y, idx, _strideNode, _strideCell, g, _nCells, _nNodes, _polyDerM, _MM00, _invrMM, S_g, _deltarho, v, rho_i, mul1, mul2)
+        # Dc += (2/Δρ) * M_ρ^{-1} * (D^T * M^{(0,0)} * u * c - S_g * g)
+        volumeIntegral!(Dc, y, idx, _strideNode, _strideCell, g, _nCells, _nNodes, _polyDerM, _MM00, _invrMM, S_g, _deltarho, u, rho_i, mul1, mul2)
 
         return nothing
     end
@@ -61,13 +61,14 @@ module RadialConvDispOperatorDG
         nothing
     end
 
-    # Dc += (2/Δρ) * M_ρ^{-1} * (D^T * M^{(0,0)} * v * c - S_g * g)
-    @inline function volumeIntegral!(Dc, y, idx, _strideNode::Int64, _strideCell::Int64, g, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _MM00::Matrix{Float64}, _invrMM::Vector{Matrix{Float64}}, S_g::Vector{Matrix{Float64}}, _deltarho::Float64, v, rho_i, mul1::Vector{Float64}, mul2::Vector{Float64})
+    # Dc += (2/Δρ) * M_ρ^{-1} * (D^T * M^{(0,0)} * u * c - S_g * g)
+    # u = v_in × ρ_in is the constant velocity coefficient for radial flow
+    @inline function volumeIntegral!(Dc, y, idx, _strideNode::Int64, _strideCell::Int64, g, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _MM00::Matrix{Float64}, _invrMM::Vector{Matrix{Float64}}, S_g::Vector{Matrix{Float64}}, _deltarho::Float64, u, rho_i, mul1::Vector{Float64}, mul2::Vector{Float64})
         base = first(idx)
-        # Convection term: M_ρ^{-1} * D^T * M^{(0,0)} * v * c
+        # Convection term: M_ρ^{-1} * D^T * M^{(0,0)} * u * c
         @inbounds for Cell in 1:_nCells
             cell_idx = (Cell - 1) * _nNodes + 1 : Cell * _nNodes
-            broadcast!(+, @view(Dc[cell_idx]), @view(Dc[cell_idx]), (2.0 / _deltarho) * v * (_invrMM[Cell] * (transpose(_polyDerM) * (_MM00 * @view(y[base + cell_idx[1] - 1 : base + cell_idx[end] - 1])))))
+            broadcast!(+, @view(Dc[cell_idx]), @view(Dc[cell_idx]), (2.0 / _deltarho) * u * (_invrMM[Cell] * (transpose(_polyDerM) * (_MM00 * @view(y[base + cell_idx[1] - 1 : base + cell_idx[end] - 1])))))
         end
         # Dispersion term: -M_ρ^{-1} * S_g * g
         @inbounds for Cell in 1:_nCells
@@ -76,23 +77,25 @@ module RadialConvDispOperatorDG
         return nothing
     end
 
-    @inline function surfaceIntegral!(Dc, c_star::Vector{Float64}, g_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, v::Float64, d_rad_i::Vector{Float64}, rho_i::Vector{Float64}, _deltarho::Float64)
+    # u = v_in × ρ_in is the constant velocity coefficient for radial flow
+    @inline function surfaceIntegral!(Dc, c_star::Vector{Float64}, g_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, u::Float64, d_rad_i::Vector{Float64}, rho_i::Vector{Float64}, _deltarho::Float64)
         for Cell in 1:_nCells
             @inbounds @simd for Node in 1:_nNodes
-                Dc[(Cell - 1) * _nNodes + Node] -= (2.0 / _deltarho) * (_invrMM[Cell][Node, 1] * (-v * c_star[Cell] + rho_i[Cell] * d_rad_i[Cell] * g_star[Cell]) + _invrMM[Cell][Node, _nNodes] * (v * c_star[Cell + 1] - rho_i[Cell + 1] * d_rad_i[Cell + 1] * g_star[Cell + 1]))
+                Dc[(Cell - 1) * _nNodes + Node] -= (2.0 / _deltarho) * (_invrMM[Cell][Node, 1] * (-u * c_star[Cell] + rho_i[Cell] * d_rad_i[Cell] * g_star[Cell]) + _invrMM[Cell][Node, _nNodes] * (u * c_star[Cell + 1] - rho_i[Cell + 1] * d_rad_i[Cell + 1] * g_star[Cell + 1]))
             end
         end
         return nothing
     end
 
     # Compute numerical fluxes c* and g*
-    @inline function computeNumericalFluxes!(c_star, g_star, y, idx, g, _strideNode, _strideCell, _nNodes, _nCells, v, d_rad_i::Vector{Float64}, rho_i::Vector{Float64}, cIn)
+    # u = v_in × ρ_in is the constant velocity coefficient for radial flow
+    @inline function computeNumericalFluxes!(c_star, g_star, y, idx, g, _strideNode, _strideCell, _nNodes, _nCells, u, d_rad_i::Vector{Float64}, rho_i::Vector{Float64}, cIn)
         @inbounds for Cell in 2:_nCells
-            c_star[Cell] = y[idx[1] + (Cell - 1) * _strideCell + ifelse(v >= 0.0, -_strideNode, 0)]
+            c_star[Cell] = y[idx[1] + (Cell - 1) * _strideCell + ifelse(u >= 0.0, -_strideNode, 0)]
             g_star[Cell] = 0.5 * (g[(Cell - 1) * _nNodes] + g[(Cell - 1) * _nNodes + 1])
         end
         c_star[1] = cIn
-        g_star[1] = v / (d_rad_i[1]) * (y[idx[1]] - cIn)
+        g_star[1] = u / (d_rad_i[1]) * (y[idx[1]] - cIn)
 
         c_star[_nCells + 1] = y[idx[1] + _nCells * _strideCell - _strideNode]
         g_star[_nCells + 1] = 0.0

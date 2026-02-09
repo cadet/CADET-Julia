@@ -125,6 +125,85 @@ end
 
 
 """
+    radialDGjacobianDispBlockVariable(cellIdx, _nNodes, _polyDerM, _invMM, _invrMM_cell, _rho_i_left, _rho_i_right, _deltarho, _invWeights, _polyDeg, _nCells, S_g_cell, d_rad_left, d_rad_right)
+
+Compute dispersion Jacobian block for variable D(ρ).
+Uses precomputed S_g matrix (which has variable D baked in) and d_rad values at interfaces.
+
+# Returns
+The dispersion block matrix with variable D(ρ) properly incorporated.
+"""
+function radialDGjacobianDispBlockVariable(cellIdx, _nNodes, _polyDerM, _invMM, _invrMM_cell,
+                                            _rho_i_left, _rho_i_right, _deltarho,
+                                            _invWeights, _polyDeg, _nCells,
+                                            S_g_cell, d_rad_left, d_rad_right)
+
+    # 1. Compute G blocks (auxiliary Jacobian, cell-independent)
+    gBlock = radialGetGBlock(cellIdx, _nNodes, _polyDerM, _nCells, _invMM, _deltarho, _invWeights, _polyDeg)
+    gBlockLeft = radialGetGBlock(cellIdx - 1, _nNodes, _polyDerM, _nCells, _invMM, _deltarho, _invWeights, _polyDeg)
+    gBlockRight = radialGetGBlock(cellIdx + 1, _nNodes, _polyDerM, _nCells, _invMM, _deltarho, _invWeights, _polyDeg)
+
+    # 2. Compute G* (numerical flux Jacobian of auxiliary equation)
+    gStarDC = radialAuxBlockGstar(cellIdx, gBlockLeft, gBlock, gBlockRight, _nNodes, _nCells)
+
+    # 3. Assemble dispersion block
+    dispBlock = zeros(_nNodes, 3 * _nNodes + 2)
+
+    # Volume term: -M_ρ^{-1} * S_g * G̅  (S_g has variable D baked in)
+    dispBlock[:, _nNodes + 1 : _nNodes + 2 + _nNodes] .= _invrMM_cell * (-S_g_cell * gBlock)
+
+    # Surface term: M_ρ^{-1} * B_g * G̅*
+    # B_g acts on rows of gStarDC with interface-specific d_rad values:
+    #   row 1 (left face):  scaled by -rho_i_left * d_rad_left
+    #   row N (right face): scaled by +rho_i_right * d_rad_right
+    bg_gstar = zeros(_nNodes, 3 * _nNodes + 2)
+    @views bg_gstar[1, :] .= -_rho_i_left * d_rad_left .* gStarDC[1, :]
+    @views bg_gstar[_nNodes, :] .= _rho_i_right * d_rad_right .* gStarDC[_nNodes, :]
+
+    dispBlock .+= _invrMM_cell * bg_gstar
+
+    # Scale by 2/Δρ
+    dispBlock .*= 2.0 / _deltarho
+
+    return dispBlock
+end
+
+
+"""
+    radialAddDispJacobianVariable!(jacobian, dispBlocks, _nCells, _nNodes, compstride)
+
+Add dispersion Jacobian blocks to the global Jacobian.
+For use with dispBlocks that already have variable D(ρ) incorporated.
+"""
+function radialAddDispJacobianVariable!(jacobian, dispBlocks, _nCells, _nNodes, compstride)
+    nTotal = _nCells * _nNodes
+
+    for cell in 1:_nCells
+        # Row range in global Jacobian
+        row_start = 1 + (cell-1)*_nNodes + compstride
+        row_end = cell*_nNodes + compstride
+
+        # dispBlock column k maps to global node g = (cell-2)*nNodes + k - 1
+        # Valid range: g ∈ [1, nTotal]
+        # So k ∈ [2 - (cell-2)*nNodes, nTotal + 1 - (cell-2)*nNodes]
+        k_start = max(1, 2 - (cell-2)*_nNodes)
+        k_end = min(3*_nNodes+2, nTotal + 1 - (cell-2)*_nNodes)
+
+        if k_start > k_end
+            continue
+        end
+
+        g_start = (cell-2)*_nNodes + k_start - 1  # global node (1-based)
+        g_end = (cell-2)*_nNodes + k_end - 1
+
+        # No d_rad multiplication here - it's already in dispBlocks
+        @views jacobian[row_start:row_end, g_start + compstride : g_end + compstride] .+= dispBlocks[cell][:, k_start:k_end]
+    end
+    nothing
+end
+
+
+"""
     radialAddConvJacobian!(jacobian, convBlocks, _nCells, _nNodes, v, compstride)
 """
 function radialAddConvJacobian!(jacobian, convBlocks, _nCells, _nNodes, v, compstride)
@@ -249,6 +328,8 @@ function ConvDispJacobian(model::rLRMP, v, p)
     rho_i = model.ConvDispOpInstance.rho_i
     invWeights = model.ConvDispOpInstance.invWeights
     polyDeg = model.polyDeg
+    d_rad_i = model.ConvDispOpInstance.d_rad_i  # D values at interfaces
+    S_g = model.ConvDispOpInstance.S_g          # Dispersion matrices with variable D baked in
 
     ConvDispJac = zeros(nComp * model.bindStride + model.adsStride, nComp * model.bindStride + model.adsStride)
 
@@ -258,14 +339,18 @@ function ConvDispJacobian(model::rLRMP, v, p)
         convBlocks[cell] = radialDGjacobianConvBlock(cell, nNodes, polyDerM, MM00, invrMM[cell], deltarho, nCells)
     end
 
-    # Precompute per-cell dispersion blocks (without d_rad factor)
+    # Precompute per-cell dispersion blocks for variable D(ρ)
+    # These blocks use the precomputed S_g matrices which have d_rad baked in
     dispBlocks = Vector{Matrix{Float64}}(undef, nCells)
     for cell in 1:nCells
-        dispBlocks[cell] = radialDGjacobianDispBlock(cell, nNodes, polyDerM, invMM, invrMM[cell], rMM[cell], rho_i[cell], rho_i[cell+1], deltarho, invWeights, polyDeg, nCells)
+        dispBlocks[cell] = radialDGjacobianDispBlockVariable(cell, nNodes, polyDerM, invMM, invrMM[cell],
+                                                              rho_i[cell], rho_i[cell+1], deltarho,
+                                                              invWeights, polyDeg, nCells,
+                                                              S_g[cell], d_rad_i[cell], d_rad_i[cell+1])
     end
 
     # Precompute per-cell film diffusion coupling: M_ρ^{-1} * M_K
-    # This is needed for the film diffusion terms in the Jacobian
+    # M_K already has variable kf baked in from filmDiffMMatrix
     filmDiffBlocks = Vector{Matrix{Float64}}(undef, nCells)
     for cell in 1:nCells
         filmDiffBlocks[cell] = invrMM[cell] * model.FilmDiffOpInstance.M_K[cell]
@@ -280,12 +365,8 @@ function ConvDispJacobian(model::rLRMP, v, p)
     for i in 1:nComp
         compstride = (i-1) * jacobiStride
 
-        # Dispersion (scaled by per-component d_rad)
-        d_rad_i = isa(model.d_rad, Vector) ? model.d_rad[i] : model.d_rad
-        if isa(d_rad_i, Function)
-            d_rad_i = d_rad_i(rho_i[1])
-        end
-        radialAddDispJacobian!(ConvDispJac, dispBlocks, nCells, nNodes, d_rad_i, compstride)
+        # Dispersion (dispBlocks already have variable d_rad incorporated)
+        radialAddDispJacobianVariable!(ConvDispJac, dispBlocks, nCells, nNodes, compstride)
 
         # Convection (scaled by velocity v)
         radialAddConvJacobian!(ConvDispJac, convBlocks, nCells, nNodes, v, compstride)
@@ -294,12 +375,6 @@ function ConvDispJacobian(model::rLRMP, v, p)
         @views ConvDispJac[1+compstride:nNodes+compstride, 1+compstride] .+= v .* inlet_corr
 
         # Film diffusion coupling terms (per-cell assembly)
-        # kf coefficient for this component
-        kf_i = isa(model.kf, Vector) ? model.kf[i] : model.kf
-        if isa(kf_i, Function)
-            kf_i = kf_i(rho_i[1])
-        end
-
         # The film diffusion coefficient Q = 3/Rp
         Q = model.FilmDiffOpInstance.Q  # = 3/Rp
 
@@ -309,16 +384,9 @@ function ConvDispJacobian(model::rLRMP, v, p)
             pore_start = 1 + jacobiStride*nComp + (cell-1)*nNodes + compstride
             pore_end = jacobiStride*nComp + cell*nNodes + compstride
 
-            # For the kf scaling: M_K is pre-computed with kf embedded, but if kf differs per component,
-            # we need to scale. Since FilmDiffOpInstance uses kf[1], scale by kf_i/kf_base.
-            kf_base = isa(model.kf, Vector) ? model.kf[1] : model.kf
-            if isa(kf_base, Function)
-                kf_base = kf_base(rho_i[1])
-            end
-            kf_scale = kf_i / kf_base
-
-            # Film diffusion block for this cell: Q * kf_scale * filmDiffBlocks[cell]
-            filmBlock = Q * kf_scale * filmDiffBlocks[cell]
+            # Film diffusion block for this cell: Q * filmDiffBlocks[cell]
+            # M_K already contains the variable kf integration, no scaling needed
+            filmBlock = Q * filmDiffBlocks[cell]
 
             # ∂(dc/dt)/∂c += -Fc * filmBlock
             @views ConvDispJac[cell_start:cell_end, cell_start:cell_end] .-= model.Fc .* filmBlock
