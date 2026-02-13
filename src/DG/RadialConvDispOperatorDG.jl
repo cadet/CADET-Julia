@@ -53,9 +53,7 @@ module RadialConvDispOperatorDG
     @inline function auxiliarySurfaceIntegral!(stateDer, state, idx, strideNode_state, strideCell_state, strideNode_stateDer, strideCell_stateDer, _surfaceFlux, _nCells, _nNodes, _invMM, _polyDeg)
         for Cell in 1:_nCells
             @inbounds @simd for Node in 1:_nNodes
-                stateDer[1 + ((Cell - 1) * strideCell_stateDer) + ((Node - 1) * strideNode_stateDer)] +=
-                    (_invMM[Node, 1]) * ((state[idx[1] + ((Cell - 1) * strideCell_state)]) - (_surfaceFlux[Cell])) -
-                    (_invMM[Node, end]) * ((state[idx[1] + ((Cell - 1) * strideCell_state) + (_polyDeg * strideNode_state)]) - (_surfaceFlux[Cell + 1]))
+                stateDer[1 + ((Cell - 1) * strideCell_stateDer) + ((Node - 1) * strideNode_stateDer)] += (_invMM[Node, 1]) * ((state[idx[1] + ((Cell - 1) * strideCell_state)]) - (_surfaceFlux[Cell])) - (_invMM[Node, end]) * ((state[idx[1] + ((Cell - 1) * strideCell_state) + (_polyDeg * strideNode_state)]) - (_surfaceFlux[Cell + 1]))
             end
         end
         nothing
