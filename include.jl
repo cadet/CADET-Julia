@@ -9,6 +9,7 @@ push!(LOAD_PATH, joinpath(rel_path, "src", "DG")) #Load path to DG folder
 # Import necessary Julia packages and custom modules
 using DGElements
 using ConvDispOperatorDG
+using RadialConvDispOperatorDG
 # using OrdinaryDiffEq
 using DifferentialEquations
 using SparseArrays # To use sparse matrices 

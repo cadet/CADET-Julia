@@ -123,6 +123,26 @@ function create_units(model::Union{Dict, OrderedDict})
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
 
+            elseif unit_type == "RADIAL_LUMPED_RATE_MODEL_WITHOUT_PORES"
+				# Create column instance
+                column_instance = rLRM(nComp = value["ncomp"],
+				    				col_Rho_c = value["col_inner_radius"]/1.0,
+                                    col_Rho = value["col_outer_radius"]/1.0,
+					    			d_rad = parse_variable_coefficient(value["col_dispersion"], value["col_inner_radius"]/1.0),
+				    	    		eps_c = value["col_porosity"]/1.0,
+							    	c0 = value["init_c"],
+							    	q0 = value["init_q"],
+								    polyDeg = value["discretization"]["polyDeg"], # defaults to 4
+							    	nCells = value["discretization"]["ncol"], # defaults to 8
+                                    col_height = value["col_height"]./1.0
+				    				)
+				column_instance.bind = get_bind(value,column_instance.bindStride)
+                push!(columns, column_instance)
+                # Assign ID and number in columns
+                push!(columnNumber, length(columnNumber)+1)
+                push!(columnIDs, unit_name)
+                units[unit_name] = column_instance
+
 			elseif unit_type == "LUMPED_RATE_MODEL_WITH_PORES"
                 # Create column instance
                 column_instance = LRMP(nComp = value["ncomp"], 
@@ -140,6 +160,30 @@ function create_units(model::Union{Dict, OrderedDict})
                                         exact_integration = value["discretization"]["exact_integration"],
                                         cross_section_area = (haskey(value, "cross_section_area") ? value["cross_section_area"] : 1.0)/1.0
                                         )
+				column_instance.bind = get_bind(value,column_instance.bindStride)
+                push!(columns, column_instance)
+                # Assign ID and number in columns
+                push!(columnNumber, length(columnNumber)+1)
+                push!(columnIDs, unit_name)
+                units[unit_name] = column_instance
+
+            elseif unit_type == "RADIAL_LUMPED_RATE_MODEL_WITH_PORES"
+				# Create column instance for radial LRMP
+                column_instance = rLRMP(nComp = value["ncomp"],
+				    				col_Rho_c = value["col_inner_radius"]/1.0,
+                                    col_Rho = value["col_outer_radius"]/1.0,
+					    			d_rad = parse_variable_coefficient(value["col_dispersion"], value["col_inner_radius"]/1.0),
+				    	    		eps_c = value["col_porosity"]/1.0,
+									eps_p = value["par_porosity"]/1.0,
+									kf = parse_variable_coefficient(value["film_diffusion"], value["col_inner_radius"]/1.0),
+									Rp = value["par_radius"]/1.0,
+							    	c0 = value["init_c"],
+									cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
+							    	q0 = value["init_q"],
+								    polyDeg = value["discretization"]["polyDeg"], # defaults to 4
+							    	nCells = value["discretization"]["ncol"], # defaults to 8
+                                    col_height = value["col_height"]./1.0
+				    				)
 				column_instance.bind = get_bind(value,column_instance.bindStride)
                 push!(columns, column_instance)
                 # Assign ID and number in columns
@@ -176,8 +220,34 @@ function create_units(model::Union{Dict, OrderedDict})
                 units[unit_name] = column_instance
 				
 				
+			elseif unit_type == "RADIAL_GENERAL_RATE_MODEL"
+				# Create column instance for radial GRM
+				column_instance = rGRM(nComp = value["ncomp"],
+									col_Rho_c = value["col_inner_radius"]/1.0,
+									col_Rho = value["col_outer_radius"]/1.0,
+									d_rad = parse_variable_coefficient(value["col_dispersion"], value["col_inner_radius"]/1.0),
+									eps_c = value["col_porosity"]/1.0,
+									eps_p = value["par_porosity"]/1.0,
+									kf = parse_variable_coefficient(value["film_diffusion"], value["col_inner_radius"]/1.0),
+									Rp = value["par_radius"]/1.0,
+									Rc = (haskey(value, "par_coreradius") ? value["par_coreradius"] : 0.0)/1.0,
+									Dp = value["par_diffusion"]./1.0,
+									c0 = value["init_c"],
+									cp0 = haskey(value, "init_cp") ? value["init_cp"] : -1,
+									q0 = value["init_q"],
+									polyDeg = value["discretization"]["polyDeg"],
+									polyDegPore = value["discretization"]["polyDegPore"],
+									nCells = value["discretization"]["ncol"],
+									col_height = value["col_height"]./1.0
+									)
+				column_instance.bind = get_bind(value, column_instance.bindStride)
+				push!(columns, column_instance)
+				push!(columnNumber, length(columnNumber)+1)
+				push!(columnIDs, unit_name)
+				units[unit_name] = column_instance
+
 			elseif unit_type == "CSTR"
-				column_instance = cstr(; nComp = value["ncomp"], 
+				column_instance = cstr(; nComp = value["ncomp"],
 										V = value["volume"]/1.0,
 										c0 = haskey(value, "init_c") ? value["init_c"] : 0.0
 										)
@@ -186,7 +256,7 @@ function create_units(model::Union{Dict, OrderedDict})
                 push!(columnNumber, length(columnNumber)+1)
                 push!(columnIDs, unit_name)
                 units[unit_name] = column_instance
-				
+
             else
                 println("Unknown unit type: $unit_type")
             end
