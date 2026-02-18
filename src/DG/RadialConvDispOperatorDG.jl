@@ -60,7 +60,6 @@ module RadialConvDispOperatorDG
     end
 
     # Dc += (2/Δρ) * M_ρ^{-1} * (D^T * M^{(0,0)} * u * c - S_g * g)
-    # u = v_in × ρ_in is the constant velocity coefficient for radial flow
     @inline function volumeIntegral!(Dc, y, idx, _strideNode::Int64, _strideCell::Int64, g, _nCells::Int, _nNodes::Int, _polyDerM::Matrix{Float64}, _MM00::Matrix{Float64}, _invrMM::Vector{Matrix{Float64}}, S_g::Vector{Matrix{Float64}}, _deltarho::Float64, u, rho_i, mul1::Vector{Float64}, mul2::Vector{Float64})
         base = first(idx)
         # Convection term: M_ρ^{-1} * D^T * M^{(0,0)} * u * c
@@ -75,7 +74,6 @@ module RadialConvDispOperatorDG
         return nothing
     end
 
-    # u = v_in × ρ_in is the constant velocity coefficient for radial flow
     @inline function surfaceIntegral!(Dc, c_star::Vector{Float64}, g_star::Vector{Float64}, _nCells::Int, _nNodes::Int, _invrMM::Vector{Matrix{Float64}}, u::Float64, d_rad_i::Vector{Float64}, rho_i::Vector{Float64}, _deltarho::Float64)
         for Cell in 1:_nCells
             @inbounds @simd for Node in 1:_nNodes
@@ -86,7 +84,6 @@ module RadialConvDispOperatorDG
     end
 
     # Compute numerical fluxes c* and g*
-    # u = v_in × ρ_in is the constant velocity coefficient for radial flow
     @inline function computeNumericalFluxes!(c_star, g_star, y, idx, g, _strideNode, _strideCell, _nNodes, _nCells, u, d_rad_i::Vector{Float64}, rho_i::Vector{Float64}, cIn)
         @inbounds for Cell in 2:_nCells
             c_star[Cell] = y[idx[1] + (Cell - 1) * _strideCell + ifelse(u >= 0.0, -_strideNode, 0)]
