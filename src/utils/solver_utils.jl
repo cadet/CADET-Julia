@@ -146,8 +146,13 @@ mutable struct SolverCache
 			for j=1:columns[1].nComp # Storing initial conditions in output matrix
 				if typeof(columns[i]) == cstr
 					columns[i].solution_outlet[1,j] = x0[j + idx_units[i]]
+				elseif (typeof(columns[i]) == rLRM || typeof(columns[i]) == rLRMP || typeof(columns[i]) == rGRM) && switches.ConnectionInstance.u_tot[switches.switchSetup[1], i] < 0
+					# Radial inward flow: outlet at first node (R_i)
+					nPts = columns[i].ConvDispOpInstance.nPoints
+					columns[i].solution_outlet[1,j] = x0[(j-1)*nPts + 1 + idx_units[i]]
 				else
-					columns[i].solution_outlet[1,j] = x0[j*columns[i].ConvDispOpInstance.nPoints + idx_units[i]]
+					nPts = columns[i].ConvDispOpInstance.nPoints
+					columns[i].solution_outlet[1,j] = x0[j*nPts + idx_units[i]]
 				end
 			end
 			append!(columns[i].solution_times, 0)
