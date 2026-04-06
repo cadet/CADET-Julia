@@ -20,7 +20,7 @@ Solves the system of differential equations for the specified chromatographic mo
 # Returns
 Nothing. Results are stored in the `solution_outlet` and `solution_times` fields of the column and outlet objects.
 """
-function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg = QNDF(autodiff=AutoFiniteDiff()),
+function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,), alg = QNDF(autodiff=AutoFiniteDiff()), maxiters = 100000,
 )
 	# Set up parameter tuple
 	jacProto = nothing
@@ -84,20 +84,25 @@ function solve_model(; columns, switches::Switches, solverOptions, outlets=(0,),
 		idx_1 = findfirst(==(switches.section_times[i]), solverOptions.solution_times)
 		idx_2 = findfirst(==(switches.section_times[i+1]), solverOptions.solution_times)
 		sol_times = solverOptions.solution_times[idx_1 : idx_2] .- switches.section_times[i]
-		sol = solve(prob, alg, saveat=sol_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol) 
+		sol = solve(prob, alg, saveat=sol_times, abstol=solverOptions.abstol, reltol=solverOptions.reltol, maxiters=maxiters)
 		
 		#New initial conditions
 		x0 = sol.u[end]
 		
-		#Extract solution in solution_outlet in each unit 
+		#Extract solution in solution_outlet in each unit
 		for j = 1: solverOptions.nColumns
-			for k = 1:columns[j].nComp 
+			for k = 1:columns[j].nComp
 				if typeof(columns[j]) == cstr
 					columns[j].solution_outlet[length(columns[j].solution_times) + 1 : length(columns[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k + solverOptions.idx_units[j]).u
+				elseif (typeof(columns[j]) == rLRM || typeof(columns[j]) == rLRMP || typeof(columns[j]) == rGRM) && switches.ConnectionInstance.u_tot[switches.switchSetup[i], j] < 0
+					# Radial inward flow: outlet at first node (R_i)
+					nPts = columns[j].ConvDispOpInstance.nPoints
+					columns[j].solution_outlet[length(columns[j].solution_times) + 1 : length(columns[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=(k-1)*nPts + 1 + solverOptions.idx_units[j]).u
 				else
-					columns[j].solution_outlet[length(columns[j].solution_times) + 1 : length(columns[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k*columns[j].ConvDispOpInstance.nPoints + solverOptions.idx_units[j]).u
-				end				
-			end 
+					nPts = columns[j].ConvDispOpInstance.nPoints
+					columns[j].solution_outlet[length(columns[j].solution_times) + 1 : length(columns[j].solution_times) + length(sol.t[2:end]), k] = sol(sol.t[2:end], idxs=k*nPts + solverOptions.idx_units[j]).u
+				end
+			end
 			append!(columns[j].solution_times, sol.t[2:end] .+ tspan[1])
 		end
 

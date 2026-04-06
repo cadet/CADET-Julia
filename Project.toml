@@ -1,11 +1,12 @@
 name = "CADETJulia"
 uuid = "ddfd9fc4-ef49-4d31-a4ad-127c49fbcbce"
-authors = ["Jesper Frandsen, Jan M. Breuer, Johannes Schmölder"]
 version = "0.1.0"
+authors = ["Jesper Frandsen, Jan M. Breuer, Johannes Schmölder"]
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 OrdinaryDiffEqBDF = "6ad6398a-0878-4a85-9266-38940aa047c8"
@@ -21,6 +22,7 @@ Aqua = "0.8.13"
 CSV = "0.10.15"
 DataFrames = "1.7.0"
 DataStructures = "0.18.22"
+ForwardDiff = "1.3.2"
 HDF5 = "0.17.2"
 LinearAlgebra = "1.10.0"
 OrdinaryDiffEqBDF = "1.7.0"

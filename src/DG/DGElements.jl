@@ -233,6 +233,96 @@ function MMatrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return inv(invMMatrix(_nodes,_polyDeg, alpha, beta))
 end
 
+"""
+    getVandermonde_LAGRANGE(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Computes the Vandermonde matrix of Lagrange basis polynomials at Legendre-Gauss quadrature points,
+weighted by the square root of the Jacobi weight function for mass matrix computation.
+
+V[q,k] = √(wₖ · (1-ξₖ)^α · (1+ξₖ)^β) · Lₖ(ξ_q)
+
+where Lₖ(ξ) = Π_{m≠k} (ξ - ξₘ) / (ξₖ - ξₘ) are the Lagrange basis polynomials.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes (e.g., LGL nodes).
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Jacobi weight function parameters (default 0.0 for standard mass matrix).
+
+# Returns
+The weighted Vandermonde matrix as a 2D array of size (nQuad, nNodes).
+"""
+function getVandermonde_LAGRANGE(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+    nNodes = _polyDeg + 1
+
+    # Use LG quadrature - need extra points for weight function
+    quad_deg = _polyDeg + ceil(Int, (alpha + beta) / 2)
+    quad_nodes, quad_invWeights = lgnodes(quad_deg)
+    quad_weights = 1.0 ./ quad_invWeights
+    nQuad = length(quad_nodes)
+
+    V = zeros(Float64, nQuad, nNodes)
+    for k in 1:nNodes
+        for q in 1:nQuad
+            # Lagrange basis polynomial L_k(ξ_q)
+            L_k = 1.0
+            for m in 1:nNodes
+                if m != k
+                    L_k *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                end
+            end
+            # Weight factor: √(w_q · (1-ξ_q)^α · (1+ξ_q)^β)
+            weight_factor = sqrt(quad_weights[q] * ((1.0 - quad_nodes[q])^alpha) * ((1.0 + quad_nodes[q])^beta))
+            V[q, k] = weight_factor * L_k
+        end
+    end
+
+    return V
+end
+
+"""
+    LagrangeMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Computes the mass matrix using Lagrange polynomial integration with Jacobi weight.
+
+M[i,j] = ∫₋₁¹ Lᵢ(ξ) · Lⱼ(ξ) · (1-ξ)^α · (1+ξ)^β dξ
+
+where Lᵢ(ξ) are the Lagrange basis polynomials defined on `_nodes`.
+
+Uses quadrature: M = Vᵀ · V where V is the weighted Lagrange Vandermonde matrix.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes (e.g., LGL nodes).
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Weight function parameters (default 0.0 for standard mass matrix).
+
+# Returns
+The mass matrix as a 2D array.
+"""
+function LagrangeMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+    return transpose(getVandermonde_LAGRANGE(_nodes, _polyDeg, alpha, beta)) * getVandermonde_LAGRANGE(_nodes, _polyDeg, alpha, beta)
+end
+
+"""
+    invLagrangeMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+
+Computes the inverse mass matrix using Lagrange polynomials with Jacobi weight.
+
+M⁻¹ = (Vᵀ · V)⁻¹
+
+where V is the weighted Lagrange Vandermonde matrix from getVandermonde_LAGRANGE.
+
+# Arguments
+- `_nodes`: Vector of interpolation nodes.
+- `_polyDeg`: Polynomial degree.
+- `alpha`, `beta`: Jacobi weight function parameters (optional).
+
+# Returns
+The inverse mass matrix as a 2D array.
+"""
+function invLagrangeMMatrix(_nodes, _polyDeg, alpha=0.0, beta=0.0)
+    return inv(LagrangeMMatrix(_nodes, _polyDeg, alpha, beta))
+end
+
 # #Stiffness matrix
 # function steifMatrix(_nodes,_polyDeg)
 #     #Mass matrix * Derivative matrix
@@ -258,5 +348,262 @@ function second_order_stiff_matrix(_nodes,_polyDeg, alpha=0.0, beta=0.0)
     return Transpose(derivativeMatrix(_polyDeg,_nodes)) * MMatrix(_nodes,_polyDeg, alpha, beta) * derivativeMatrix(_polyDeg,_nodes)
 end
 
+# Legendre-Gauss (LG) nodes and weights
+function lgnodes(N)
+    N1 = N + 1
+
+    x = zeros(N1)
+    for i in 1:N1
+        x[i] = -cos((2*i - 1) * pi / (2*N1))
+    end
+
+    # Legendre polynomial values
+    P = zeros(N1, N1 + 1)
+
+    # Newton-Raphson iteration to find roots of P_{N+1}(x)
+    xold = ones(N1) .* 2.0
+
+    while maximum(abs.(x .- xold)) > eps()
+        xold[:] = x
+
+        P[:, 1] .= 1.0
+        P[:, 2] = x
+
+        # Three-term recurrence for Legendre polynomials
+        for k = 2:N1
+            P[:, k + 1] = ((2*k - 1) .* x .* P[:, k] - (k - 1) .* P[:, k - 1]) ./ k
+        end
+
+        # Newton-Raphson update: x_{n+1} = x_n - P_{N+1}(x_n) / P'_{N+1}(x_n)
+        # where P'_{N+1}(x) = (N+1) / (x^2 - 1) * [x * P_{N+1}(x) - P_N(x)]
+        for i in 1:N1
+            dP = (N1) / (x[i]^2 - 1.0) * (x[i] * P[i, N1 + 1] - P[i, N1])
+            x[i] = xold[i] - P[i, N1 + 1] / dP
+        end
+    end
+
+    # Compute weights: w_i = 2 / [(1 - x_i^2) * (P'_{N+1}(x_i))^2]
+    w = zeros(N1)
+    for i in 1:N1
+        dP = (N1) / (x[i]^2 - 1.0) * (x[i] * P[i, N1 + 1] - P[i, N1])
+        w[i] = 2.0 / ((1.0 - x[i]^2) * dP^2)
+    end
+
+    return x, 1 ./ w
+end
+
+# Chebyshev-Gauss-Lobatto nodes and weights
+function cglnodes(N)
+    N1 = N + 1
+
+    # Chebyshev-Gauss-Lobatto nodes: x_j = -cos(π*j/N)
+    x = zeros(N1)
+    for j in 0:N
+        x[j+1] = -cos(pi * j / N)
+    end
+
+    # Weights for Chebyshev-Gauss-Lobatto quadrature
+    w = zeros(N1)
+    w[1] = pi / (2 * N)
+    w[N1] = pi / (2 * N)
+    for j in 1:(N-1)
+        w[j+1] = pi / N
+    end
+
+    return x, 1 ./ w
+end
+
+# Chebyshev-Gauss nodes and weights
+function cgnodes(N)
+    # N+1 interior nodes
+    N1 = N + 1
+
+    # Chebyshev-Gauss nodes: x_j = -cos(π*(2j+1)/(2N+2))
+    x = zeros(N1)
+    for j in 0:N
+        x[j+1] = -cos(pi * (2*j + 1) / (2 * N1))
+    end
+
+    # Weights for Chebyshev-Gauss quadrature (all equal)
+    w = fill(pi / N1, N1)
+
+    return x, 1 ./ w
+end
+
+# weighted mass matrix and its inverse
+function weightedMMatrix(_nodes::Vector{Float64}, _polyDeg, _nCells, rho_i::Vector{Float64}, _deltarho::Float64)
+    rMM = Vector{Matrix{Float64}}(undef, _nCells)
+    for Cell in 1:_nCells
+        rMM[Cell] = ((_deltarho/2) .* LagrangeMMatrix(_nodes, _polyDeg, 0 , 1) .+ rho_i[Cell] .* LagrangeMMatrix(_nodes, _polyDeg, 0 , 0))
+    end
+    return rMM
+end
+
+function invweightedMMatrix(_nodes, _polyDeg, _nCells, rho_i, _deltarho)
+    invrMM = Vector{Matrix{Float64}}(undef, _nCells)
+    for Cell in 1:_nCells
+        invrMM[Cell] = inv((_deltarho/2) .* LagrangeMMatrix(_nodes, _polyDeg, 0, 1) .+ rho_i[Cell] .* LagrangeMMatrix(_nodes, _polyDeg, 0, 0))
+    end
+    return invrMM
+end
+
+"""
+    dispMMatrix(_nodes, _polyDeg, rho_i, _deltarho, d_rad, _polyDerM, rMM; overintegrate=false)
+
+Compute the dispersion matrix S_g for radial geometry DG discretization.
+
+# Mathematical Definition
+S_g[j,k] = ∫ (dL_j/dξ) * L_k * ρ̂(ξ) * D_rad(ρ̂(ξ)) dξ
+
+where L_j are Lagrange basis functions, ρ̂ is the radial coordinate, and D_rad is the dispersion coefficient.
+
+# Implementation
+- **Constant d_rad**: Uses analytical formula S_g = d_rad * D^T * M_ρ (exact)
+- **Variable d_rad**: Uses Legendre-Gauss quadrature integration
+
+# Quadrature Accuracy (Kopriva 2009, Boyd)
+- **Linear d_rad(ρ)**: p+1 LG points are exact (overintegrate=false, default)
+- **Nonlinear d_rad(ρ)**: Use overintegrate=true for 3p/2 rule to avoid aliasing
+  - Example: d_rad(ρ) = D₀ * exp(-α*ρ²) requires overintegration
+  - Example: d_rad(ρ) = D₀ * (1 + β*ρ) is linear, no overintegration needed
+
+# Arguments
+- `_nodes`: LGL quadrature nodes in reference element [-1, 1]
+- `_polyDeg`: Polynomial degree p
+- `rho_i`: Cell interface positions [ρ₀, ρ₁, ..., ρₙ]
+- `_deltarho`: Cell width Δρ
+- `d_rad`: Dispersion coefficient (Float64 for constant, Function for variable)
+- `_polyDerM`: Polynomial derivative matrix D
+- `rMM`: Weighted mass matrices M_ρ for each cell
+- `overintegrate`: Use 3p/2 quadrature points for nonlinear coefficients (default: false)
+"""
+function dispMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, d_rad::Union{Float64, Function}, _polyDerM::Matrix{Float64}, rMM::Vector{Matrix{Float64}}; overintegrate::Bool = false)
+    nCells = length(rho_i) - 1
+    nNodes = _polyDeg + 1
+    S_g = Vector{Matrix{Float64}}(undef, nCells)
+
+    if isa(d_rad, Float64)
+        for Cell in 1:nCells
+            S_g[Cell] = d_rad * transpose(_polyDerM) * rMM[Cell]
+        end
+    else
+        quad_deg = overintegrate ? ceil(Int, 3 * _polyDeg / 2) : _polyDeg
+        quad_nodes, quad_invWeights = lgnodes(quad_deg)
+        quad_weights = 1.0 ./ quad_invWeights
+        nQuad = length(quad_nodes)
+
+        lagrange_at_quad = zeros(Float64, nNodes, nQuad)
+        for k in 1:nNodes
+            for q in 1:nQuad
+                lagrange_at_quad[k, q] = 1.0
+                for m in 1:nNodes
+                    if m != k
+                        lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                    end
+                end
+            end
+        end
+
+        dlagrange_at_quad = zeros(Float64, nNodes, nQuad)
+        for q in 1:nQuad
+            for j in 1:nNodes
+                sum_terms = 0.0
+                for n in 1:nNodes
+                    if n != j
+                        term = 1.0 / (_nodes[j] - _nodes[n])
+                        for p in 1:nNodes
+                            if p != j && p != n
+                                term *= (quad_nodes[q] - _nodes[p]) / (_nodes[j] - _nodes[p])
+                            end
+                        end
+                        sum_terms += term
+                    end
+                end
+                dlagrange_at_quad[j, q] = sum_terms
+            end
+        end
+
+        for Cell in 1:nCells
+                S_g[Cell] = zeros(Float64, nNodes, nNodes)
+                for q in 1:nQuad
+                    rho_q = rho_i[Cell] + (_deltarho / 2) * (1 + quad_nodes[q])
+                    d_rad_q = d_rad(rho_q)
+                    weight_factor = quad_weights[q] * rho_q * d_rad_q
+                    S_g[Cell] .+= weight_factor .* (dlagrange_at_quad[:, q] * lagrange_at_quad[:, q]')
+                end
+        end
+    end
+    return S_g
+end
+
+"""
+    filmDiffMMatrix(_nodes, _polyDeg, rho_i, _deltarho, k_f, rMM; overintegrate=false)
+
+Compute the film diffusion matrix M_K for radial geometry LRMP model.
+
+# Mathematical Definition
+M_K[j,k] = ∫ L_j * L_k * ρ̂(ξ) * k_f(ρ̂(ξ)) dξ
+
+where L_j are Lagrange basis functions, ρ̂ is the radial coordinate, and k_f is the film diffusion coefficient.
+
+# Implementation
+- **Constant k_f**: Uses analytical formula M_K = k_f * M_ρ (exact)
+- **Variable k_f**: Uses Legendre-Gauss quadrature integration
+
+# Quadrature Accuracy (Kopriva 2009, Boyd)
+- **Linear k_f(ρ)**: p+1 LG points are exact (overintegrate=false, default)
+- **Nonlinear k_f(ρ)**: Use overintegrate=true for 3p/2 rule to avoid aliasing
+  - Example: k_f(ρ) = k₀ * exp(-β*ρ) requires overintegration
+  - Example: k_f(ρ) = k₀ * (1 + α*ρ) is linear, no overintegration needed
+
+# Arguments
+- `_nodes`: LGL quadrature nodes in reference element [-1, 1]
+- `_polyDeg`: Polynomial degree p
+- `rho_i`: Cell interface positions [ρ₀, ρ₁, ..., ρₙ]
+- `_deltarho`: Cell width Δρ
+- `k_f`: Film diffusion coefficient (Float64 for constant, Function for variable)
+- `rMM`: Weighted mass matrices M_ρ for each cell
+- `overintegrate`: Use 3p/2 quadrature points for nonlinear coefficients
+"""
+function filmDiffMMatrix(_nodes, _polyDeg, rho_i::Vector{Float64}, _deltarho::Float64, k_f::Union{Float64, Function}, rMM::Vector{Matrix{Float64}}; overintegrate::Bool = false)
+    nCells = length(rho_i) - 1
+    nNodes = _polyDeg + 1
+    M_K = Vector{Matrix{Float64}}(undef, nCells)
+
+    if isa(k_f, Float64)
+        for Cell in 1:nCells
+            M_K[Cell] = k_f * rMM[Cell]
+        end
+    else
+        quad_deg = overintegrate ? ceil(Int, 3 * _polyDeg / 2) : _polyDeg
+        quad_nodes, quad_invWeights = lgnodes(quad_deg)
+        quad_weights = 1.0 ./ quad_invWeights
+        nQuad = length(quad_nodes)
+
+        lagrange_at_quad = zeros(Float64, nNodes, nQuad)
+        for k in 1:nNodes
+            for q in 1:nQuad
+                lagrange_at_quad[k, q] = 1.0
+                for m in 1:nNodes
+                    if m != k
+                        lagrange_at_quad[k, q] *= (quad_nodes[q] - _nodes[m]) / (_nodes[k] - _nodes[m])
+                    end
+                end
+            end
+        end
+
+        for Cell in 1:nCells
+            M_K[Cell] = zeros(Float64, nNodes, nNodes)
+            for q in 1:nQuad
+                rho_q = rho_i[Cell] + (_deltarho / 2) * (1 + quad_nodes[q])
+                k_f_q = k_f(rho_q)
+                weight_factor = quad_weights[q] * rho_q * k_f_q
+                M_K[Cell] .+= weight_factor .* (lagrange_at_quad[:, q] * lagrange_at_quad[:, q]')
+            end
+        end
+    end
+
+    return M_K
+end
 
 end
