@@ -1,7 +1,7 @@
 name = "CADETJulia"
 uuid = "ddfd9fc4-ef49-4d31-a4ad-127c49fbcbce"
-authors = ["Jesper Frandsen, Jan M. Breuer, Johannes Schmölder"]
 version = "0.1.0"
+authors = ["Jesper Frandsen, Jan M. Breuer, Johannes Schmölder"]
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
@@ -31,10 +31,10 @@ SafeTestsets = "0.1.0"
 SciMLBase = "2.106.0"
 SparseArrays = "1.10"
 SpecialFunctions = "2.5.1"
-Sundials = "4.28.0"
+Sundials = "4.28.0, 5"
 Test = "1.10"
-julia = "1.10"
 UnPack = "1"
+julia = "1.10"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
