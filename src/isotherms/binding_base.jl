@@ -3,9 +3,14 @@
 
 Abstract type for binding (adsorption) models.
 """
-abstract type bindingBase 
+abstract type bindingBase
 	# Here the binding is specified
 end
+
+# Safe power function for SMA: clips negative base to zero.
+# DG oscillations can produce transient negative concentrations;
+# raising a negative value to a non-integer power is undefined in ℝ.
+@inline safepow(x, v) = max(x, 1e-10)^v
 
 ########################### LINEAR ISOTHERM ###########################
 """
@@ -330,7 +335,7 @@ function compute_binding!(RHS_q, cpp, qq, bind::SMA, nComp, bindStride, t)
 	# Components in solid phase
 	@inbounds for j in 2:nComp
 		bind.idx = 1  + (j-1) * bindStride: bindStride  + (j-1) * bindStride
-		@. @views RHS_q[bind.idx] = bind.kkin[j] * (bind.ka[j] * cpp[bind.idx] * (bind.q0bar^bind.v[j]) - bind.kd[j] * qq[bind.idx] * (cpp[1 : bindStride]^bind.v[j])) #dqdt = kkin*(keq*c*q0^v-q*cs^v)
+		@. @views RHS_q[bind.idx] = bind.kkin[j] * (bind.ka[j] * cpp[bind.idx] * safepow(bind.q0bar, bind.v[j]) - bind.kd[j] * qq[bind.idx] * safepow(cpp[1 : bindStride], bind.v[j])) #dqdt = kkin*(keq*c*q0^v-q*cs^v)
 		@. @views RHS_q[1 : bindStride] -= bind.v[j] .* RHS_q[bind.idx] # dq0/dt = sum(-v dq/dt)
 	end
 
@@ -398,24 +403,24 @@ function compute_jac_iso!(J,x,model,bind::SMA,p,t)
 		bind.idx = 1 + (j-1) * model.bindStride : model.bindStride + (j-1) * model.bindStride
 
 		#Stationary phase concentrations dependency on salt concentrations i.e., dq/dc0 
-		@. @views bind.q0barSum = - bind.kkin[j] * bind.kd[j] * bind.v[j] * model.qq[bind.idx] * bind.cs ^(bind.v[j]-1) # -kkin*kd*v*q*cs^(v-1)
+		@. @views bind.q0barSum = - bind.kkin[j] * bind.kd[j] * bind.v[j] * model.qq[bind.idx] * safepow(bind.cs, bind.v[j]-1) # -kkin*kd*v*q*cs^(v-1)
 		diagonaldqdc = Diagonal(bind.q0barSum)
 		@. @views dqdc[bind.idx, 1 : model.bindStride] = diagonaldqdc
 
 		#Stationary phase concentrations dependency on mobile phase concentrations i.e., dq/dc
-		@. bind.q0barSum = bind.kkin[j] * bind.ka[j] * bind.q0bar ^ bind.v[j] #kkin *ka*q0bar^v
+		@. bind.q0barSum = bind.kkin[j] * bind.ka[j] * safepow(bind.q0bar, bind.v[j]) #kkin *ka*q0bar^v
 		diagonaldqdc = Diagonal(bind.q0barSum)
 		# @views diagonaldqdc = diagm(1 ./ kkin .* ka[j] .* q0bar .^ v[j]) 
 		@. @views dqdc[bind.idx, bind.idx] = diagonaldqdc
 
 		# #dc0/dc
-		@.  bind.q0barSum = bind.kkin[j] * model.Fjac * bind.v[j] * bind.ka[j] * bind.q0bar ^ bind.v[j] #v*ka*q0bar^v
+		@.  bind.q0barSum = bind.kkin[j] * model.Fjac * bind.v[j] * bind.ka[j] * safepow(bind.q0bar, bind.v[j]) #v*ka*q0bar^v
 		diagonaldqdc = Diagonal(bind.q0barSum)
 		# # @views diagonaldqdc = diagm(-1 ./ kkin .* v[j] .* ka[j] .* q0bar .^ v[j]) #v*ka*q0bar^v
 		@. @views dcdc[1:model.bindStride, bind.idx] = diagonaldqdc
 
 		#dc0/dc0
-		@. @views bind.q0barSum = -bind.kkin[j] * model.Fjac * bind.v[j]*(bind.v[j]*model.qq[bind.idx]*bind.cs^(bind.v[j]-1)) #v*ka*q0bar^v
+		@. @views bind.q0barSum = -bind.kkin[j] * model.Fjac * bind.v[j]*(bind.v[j]*model.qq[bind.idx]*safepow(bind.cs, bind.v[j]-1)) #v*ka*q0bar^v
 		diagonaldqdc = Diagonal(bind.q0barSum)
 		@. @views dcdc[1:model.bindStride,1:model.bindStride] += diagonaldqdc
 
@@ -425,17 +430,17 @@ function compute_jac_iso!(J,x,model,bind::SMA,p,t)
 		@inbounds for k in 2:model.nComp
 
 			#dc0/dq 
-			@.  @views bind.q0barSum = -model.Fjac * bind.v[k] * bind.kkin[j] * (bind.ka[k] * bind.v[k] * (bind.v[j] + bind.sigma[j]) * model.cpp[1 + (k-1) * model.bindStride : model.bindStride + (k-1) * model.bindStride] * (bind.q0bar) ^ (bind.v[k] - 1) + bind.kd[k] * bind.cs ^bind.v[k]) #
+			@.  @views bind.q0barSum = -model.Fjac * bind.v[k] * bind.kkin[j] * (bind.ka[k] * bind.v[k] * (bind.v[j] + bind.sigma[j]) * model.cpp[1 + (k-1) * model.bindStride : model.bindStride + (k-1) * model.bindStride] * safepow(bind.q0bar, bind.v[k] - 1) + bind.kd[k] * safepow(bind.cs, bind.v[k])) #
 			diagonaldqdc = Diagonal(bind.q0barSum)
 			@. @views dcdq[1:model.bindStride, 1 + (j-1) * model.bindStride : model.bindStride + (j-1) * model.bindStride] += diagonaldqdc
 		
 			# dq/dq
 			if j == k
-				@.  @views bind.q0barSum = - bind.kkin[j] * (bind.ka[j] * bind.v[j] * (bind.v[j] + bind.sigma[j]) * model.cpp[bind.idx] * bind.q0bar ^ (bind.v[j] - 1) + bind.kd[j] * bind.cs ^bind.v[j]) # kkin*ka*c*q0bar^v-1 - kd*cs^v
+				@.  @views bind.q0barSum = - bind.kkin[j] * (bind.ka[j] * bind.v[j] * (bind.v[j] + bind.sigma[j]) * model.cpp[bind.idx] * safepow(bind.q0bar, bind.v[j] - 1) + bind.kd[j] * safepow(bind.cs, bind.v[j])) # kkin*ka*c*q0bar^v-1 - kd*cs^v
 				diagonaldqdc = Diagonal(bind.q0barSum)
 				@. @views dqdq[1 + (j-1) * model.bindStride : model.bindStride + (j-1) * model.bindStride, 1 + (k-1) * model.bindStride : model.bindStride + (k-1) * model.bindStride] = diagonaldqdc
 			else
-				@.  @views bind.q0barSum = - bind.kkin[j] * (bind.ka[j] * bind.v[j] * (bind.v[k] + bind.sigma[k]) * model.cpp[bind.idx] * bind.q0bar ^ (bind.v[j] - 1) ) # #kkin*ka*c*q0bar^v-1
+				@.  @views bind.q0barSum = - bind.kkin[j] * (bind.ka[j] * bind.v[j] * (bind.v[k] + bind.sigma[k]) * model.cpp[bind.idx] * safepow(bind.q0bar, bind.v[j] - 1) ) # #kkin*ka*c*q0bar^v-1
 				diagonaldqdc = Diagonal(bind.q0barSum)
 				@. @views dqdq[1 + (j-1) * model.bindStride : model.bindStride + (j-1) * model.bindStride, 1 + (k-1) * model.bindStride : model.bindStride + (k-1) * model.bindStride] = diagonaldqdc
 			end
